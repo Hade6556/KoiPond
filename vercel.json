@@ -2,6 +2,10 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "cleanUrls": true,
   "trailingSlash": false,
+  "framework": null,
+  "buildCommand": null,
+  "installCommand": null,
+  "outputDirectory": null,
   "functions": {
     "api/tts.js":              { "maxDuration": 30 },
     "api/coach.js":            { "maxDuration": 60 },
