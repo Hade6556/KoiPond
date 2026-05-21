@@ -2,3 +2,9 @@
 .planning
 node_modules
 *.log
+
+# server.js is the local-dev Node server. On Vercel the equivalent
+# routes live in api/*.js. If we don't exclude this file, Vercel's
+# auto-detection deploys it as a catch-all function that intercepts
+# every request (including static HTML) and breaks the site.
+server.js
