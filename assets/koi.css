@@ -1,0 +1,245 @@
+/* ============================================================
+   KOI POND — TYPE SYSTEM
+   One coherent system, applied site-wide.
+
+   Display    — Fraunces (variable serif, opsz axis)
+   UI / Body  — Inter (variable sans, tight features)
+   Pixel      — PF Tempesta Seven (bitmap, branded moments only)
+   ============================================================ */
+
+/* ---------- PF Tempesta Seven (pixel) ---------- */
+@font-face {
+  font-family: 'PF Tempesta Seven';
+  src: url('/assets/fonts/pf_tempesta_seven.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'PF Tempesta Seven';
+  src: url('/assets/fonts/pf_tempesta_seven_bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'PF Tempesta Seven Compressed';
+  src: url('/assets/fonts/pf_tempesta_seven_compressed.ttf') format('truetype');
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'PF Tempesta Seven Compressed';
+  src: url('/assets/fonts/pf_tempesta_seven_compressed_bold.ttf') format('truetype');
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'PF Tempesta Seven Condensed';
+  src: url('/assets/fonts/pf_tempesta_seven_condensed.ttf') format('truetype');
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'PF Tempesta Seven Extended';
+  src: url('/assets/fonts/pf_tempesta_seven_extended.ttf') format('truetype');
+  font-weight: 400;
+  font-display: swap;
+}
+
+/* ---------- Base typography reset ---------- */
+html {
+  /* Optical fluid scaling base */
+  font-size: 16px;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  font-weight: 400;
+  font-size: 14.5px;
+  line-height: 1.55;
+  letter-spacing: -0.005em;
+  font-feature-settings: 'ss01', 'cv11', 'cv02', 'cv03', 'cv04';  /* Inter: alt 1, single-storey a, slashed zero, alt l, alt y */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color: #0A0A06;
+}
+
+/* ---------- Headings — Fraunces, opsz axis ---------- */
+h1, .h1 {
+  font-family: 'Fraunces', ui-serif, Georgia, serif;
+  font-variation-settings: 'opsz' 144, 'SOFT' 30;
+  font-weight: 600;
+  font-size: clamp(1.75rem, 2.6vw + 1rem, 2.75rem);
+  line-height: 1.08;
+  letter-spacing: -0.025em;
+  color: #0A0A06;
+}
+h2, .h2 {
+  font-family: 'Fraunces', ui-serif, Georgia, serif;
+  font-variation-settings: 'opsz' 72;
+  font-weight: 600;
+  font-size: clamp(1.125rem, 0.8vw + 0.875rem, 1.375rem);
+  line-height: 1.2;
+  letter-spacing: -0.018em;
+  color: #0A0A06;
+}
+h3, .h3 {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 0.9375rem;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  font-feature-settings: 'ss01';
+}
+
+/* ---------- Display class (landing hero, big editorial moments) ---------- */
+.display {
+  font-family: 'Fraunces', ui-serif, Georgia, serif;
+  font-variation-settings: 'opsz' 144, 'SOFT' 30;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1.04;
+  color: #0A0A06;
+}
+.display em {
+  font-style: italic;
+  font-variation-settings: 'opsz' 144, 'SOFT' 100;
+  font-weight: 400;
+}
+.display-italic {
+  font-family: 'Fraunces', ui-serif, Georgia, serif;
+  font-variation-settings: 'opsz' 144, 'SOFT' 100;
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+}
+
+/* ---------- Body utilities (paragraph rhythm) ---------- */
+p { line-height: 1.55; }
+.lede {
+  font-size: 1rem;
+  line-height: 1.55;
+  color: rgba(10, 10, 6, 0.78);
+  letter-spacing: -0.005em;
+}
+.editorial { line-height: 1.65; letter-spacing: -0.005em; }
+
+/* ---------- Eyebrow / overline (pixel font, tracked) ---------- */
+.eyebrow {
+  font-family: 'PF Tempesta Seven', ui-monospace, monospace;
+  font-weight: 400;
+  font-size: 11px;
+  line-height: 1.4;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(10, 10, 6, 0.65);
+  -webkit-font-smoothing: none;
+}
+.eyebrow-light {
+  color: rgba(255, 255, 255, 0.65);
+}
+
+/* Magazine-style numeric labels (the "01" on landing hero) */
+.num-label {
+  font-family: 'PF Tempesta Seven', ui-monospace, monospace;
+  font-style: normal;
+  font-weight: 400;
+  letter-spacing: 0.05em;
+  -webkit-font-smoothing: none;
+}
+
+/* ---------- Pixel utilities (use sparingly) ---------- */
+.pixel {
+  font-family: 'PF Tempesta Seven', ui-monospace, monospace;
+  font-weight: 400;
+  letter-spacing: 0.05em;
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: grayscale;
+  image-rendering: pixelated;
+}
+.pixel-bold       { font-family: 'PF Tempesta Seven', ui-monospace, monospace; font-weight: 700; -webkit-font-smoothing: none; }
+.pixel-compressed { font-family: 'PF Tempesta Seven Compressed', ui-monospace, monospace; -webkit-font-smoothing: none; }
+.pixel-condensed  { font-family: 'PF Tempesta Seven Condensed',  ui-monospace, monospace; -webkit-font-smoothing: none; }
+.pixel-extended   { font-family: 'PF Tempesta Seven Extended',   ui-monospace, monospace; -webkit-font-smoothing: none; }
+
+/* Score / numeric display — tabular figures, slightly tighter */
+.numeric {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-feature-settings: 'tnum', 'ss01';
+  letter-spacing: -0.02em;
+}
+
+/* ---------- Logo system ---------- */
+.logo {
+  display: block;
+  height: 3.5rem;
+  width: auto;
+  user-select: none;
+  transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1),
+              filter    320ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+.logo-sm { height: 2.5rem; }    /* 40px */
+.logo-md { height: 3.5rem; }    /* 56px */
+.logo-lg { height: 22rem; }     /* 352px — hero-scale brand presence */
+.logo-xl { height: 7rem;   }    /* 112px — alt hero / footer */
+
+/* Dark-context variant — flattens logo to white silhouette */
+.logo-dark { filter: brightness(0) invert(1); }
+
+/* Hover micro-interaction for floating standalone logos.
+   Subtle lift + shadow bloom — feels alive without being noisy. */
+a:hover > .logo:not(.logo-dark) {
+  transform: translateY(-2px) scale(1.03);
+  filter: drop-shadow(0 14px 28px rgba(255, 107, 30, 0.18))
+          drop-shadow(0 6px 12px rgba(10, 10, 6, 0.15));
+}
+a:hover > .logo.logo-dark {
+  transform: translateY(-2px) scale(1.03);
+  filter: brightness(0) invert(1)
+          drop-shadow(0 8px 16px rgba(255, 255, 255, 0.25));
+}
+
+/* Default resting drop-shadow on free-floating logos (no container) */
+.logo-float {
+  filter: drop-shadow(0 6px 14px rgba(10, 10, 6, 0.10))
+          drop-shadow(0 2px 4px rgba(10, 10, 6, 0.06));
+}
+a:hover > .logo-float {
+  filter: drop-shadow(0 14px 28px rgba(255, 107, 30, 0.22))
+          drop-shadow(0 6px 12px rgba(10, 10, 6, 0.14));
+}
+
+/* Entrance animation — gentle rise on first paint */
+@keyframes logoRise {
+  from { opacity: 0; transform: translateY(8px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0)   scale(1);    }
+}
+.logo-enter { animation: logoRise 700ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+@media (prefers-reduced-motion: reduce) {
+  .logo-enter { animation: none; }
+  .logo { transition: none; }
+  a:hover > .logo { transform: none; }
+}
+
+/* ---------- User initials avatar (rendered by lib/auth-gate.js) ---------- */
+.kp-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #FF8F4A, #B53D08);
+  color: #FFF4ED;
+  font-weight: 700;
+  font-size: 12.5px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  border-radius: 9999px;
+  flex-shrink: 0;
+  user-select: none;
+  width: 2rem;       /* 32px — sidebar default */
+  height: 2rem;
+}
+.kp-avatar.kp-avatar-md { width: 2.5rem; height: 2.5rem; font-size: 13.5px; }
+.kp-avatar.kp-avatar-lg { width: 4rem;   height: 4rem;   font-size: 18px; }

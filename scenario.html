@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Koi Pond — Scenario</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./assets/koi.css">
+<script>
+  tailwind.config = {
+    theme: { extend: {
+      fontFamily: { sans: ['Inter','system-ui','sans-serif'] },
+      colors: {
+        koi:  { 50:'#FFF4ED',100:'#FFDCC7',400:'#FF8F4A',500:'#FF6B1E',600:'#E55510',700:'#B53D08' },
+        pond: { 50:'#F5F5F2',100:'#E8E8E2',300:'#A3A39A',500:'#525248',700:'#1A1A14',900:'#0A0A06' },
+        lily: { 50:'#FFF8F2',100:'#FFE0CC',300:'#FFC4A0',400:'#FFA875',500:'#F08858',600:'#C76A40',700:'#9F522F' },
+        cream:{ 50:'#FDFCF5',100:'#FAF7EE',200:'#EFEAD9' }
+      }
+    } }
+  }
+</script>
+<style>
+  body { font-family:'Inter',system-ui,sans-serif; -webkit-font-smoothing:antialiased; background-color: #FAF7EE; position: relative; } body::before { content:""; position: fixed; inset:0; z-index:-1; pointer-events:none; background-image: linear-gradient(180deg, #C9DCEF 0%, #D6E4F2 22%, #E5ECF3 50%, #F0EEE5 78%, #FAF7EE 100%); }
+  .card-shadow { box-shadow: 0 1px 2px rgba(0,0,0,.03), 0 8px 30px -10px rgba(10,10,6,.08); }
+  .check::before {
+    content:""; display:inline-block; width:14px; height:14px;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23525248' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><polyline points='20 6 9 17 4 12'/></svg>");
+    background-size:contain; background-repeat:no-repeat; margin-right:6px; vertical-align:-2px;
+  }
+  .nav-link { display:flex; align-items:center; gap:.625rem; padding:.5rem .75rem; border-radius:.625rem; font-size:13.5px; font-weight:500; color:rgba(255,255,255,.7); transition:all .15s; }
+  .nav-link:hover { color:#fff; background:rgba(255,255,255,.08); }
+  .nav-link.active { background:#FF6B1E; color:#fff; }
+</style>
+<script type="module" src="./lib/auth-gate.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="text-pond-900">
+
+<div class="flex min-h-screen">
+
+  <!-- Sidebar -->
+  <aside class="hidden md:flex w-60 shrink-0 bg-[#0A0A06]/95 backdrop-blur-md border-r border-white/10 flex-col sticky top-0 h-screen z-30">
+    <a href="./index.html" class="px-5 pt-6 pb-5 flex items-center gap-2">
+      <img src="./assets/koi-pond-logo.svg" alt="Koi Pond" class="logo logo-dark logo-lg w-auto"/>
+    </a>
+    <nav class="flex-1 px-3 py-2 space-y-0.5">
+      <a href="./dashboard.html" class="nav-link"><i data-lucide="layout-dashboard" class="w-4 h-4"></i>Dashboard</a>
+      <a href="./practice.html" class="nav-link active"><i data-lucide="play" class="w-4 h-4"></i>Practice</a>
+      <a href="./past-sessions.html" class="nav-link"><i data-lucide="clock" class="w-4 h-4"></i>Past Sessions</a>
+      <a href="./progress.html" class="nav-link"><i data-lucide="trending-up" class="w-4 h-4"></i>Progress</a>
+      <a href="./leaderboard.html" class="nav-link"><i data-lucide="trophy" class="w-4 h-4"></i>Leaderboard</a>
+      <a href="./account.html" class="nav-link"><i data-lucide="user" class="w-4 h-4"></i>Account</a>
+    </nav>
+    <div class="p-3 border-t border-white/10 space-y-1">
+      <a href="./account.html" class="flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-white/10 transition">
+        <span data-user-avatar class="kp-avatar">U</span>
+        <div class="flex-1 min-w-0">
+          <p data-user-name class="text-[13px] font-semibold truncate text-white">…</p>
+          <p data-user-meta class="text-[11px] text-white/50 truncate">…</p>
+        </div>
+      </a>
+      <button data-signout class="w-full text-left px-2 py-1.5 rounded-lg text-[12px] text-white/65 hover:text-white hover:bg-white/10 transition inline-flex items-center gap-2">
+        <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
+        Sign out
+      </button>
+    </div>
+  </aside>
+
+  <main class="flex-1 min-w-0">
+    <div class="md:hidden flex items-center justify-between px-5 py-4 border-b border-white/10 bg-[#0A0A06]/95 backdrop-blur sticky top-0 z-20 text-white">
+      <a href="./practice.html" class="flex items-center gap-2 text-[13px] text-white/80">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        Back
+      </a>
+      <span data-user-avatar class="kp-avatar">U</span>
+    </div>
+
+    <div class="max-w-4xl mx-auto px-5 sm:px-8 py-8 sm:py-10">
+      <!-- Back / forward nav -->
+      <nav class="flex items-center gap-1 mb-6">
+        <button onclick="history.back()" type="button" aria-label="Back"
+                class="w-8 h-8 rounded-full bg-[#0A0A06]/5 hover:bg-[#0A0A06]/10 text-pond-700 hover:text-pond-900 ring-1 ring-pond-100/40 flex items-center justify-center transition">
+          <i data-lucide="chevron-left" class="w-4 h-4"></i>
+        </button>
+        <button onclick="history.forward()" type="button" aria-label="Forward"
+                class="w-8 h-8 rounded-full bg-[#0A0A06]/5 hover:bg-[#0A0A06]/10 text-pond-700 hover:text-pond-900 ring-1 ring-pond-100/40 flex items-center justify-center transition">
+          <i data-lucide="chevron-right" class="w-4 h-4"></i>
+        </button>
+      </nav>
+
+
+      <a href="./practice.html" class="hidden md:inline-flex items-center gap-1.5 text-[13px] text-pond-700/70 hover:text-pond-900 mb-5">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        Back to Scenarios
+      </a>
+
+      <!-- Title -->
+      <header class="mb-7">
+        <div class="flex flex-wrap items-center gap-2 mb-3">
+          <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-koi-50 text-koi-700 border border-koi-100">HARD</span>
+          <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-cream-200 text-pond-700">VC PITCH</span>
+          <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-cream-200 text-pond-700">SEED</span>
+        </div>
+        <h1 id="title" class="text-[30px] md:text-[36px] font-extrabold tracking-tight leading-tight">The Skeptical Seed Partner</h1>
+        <p id="who" class="mt-1 text-[14px] text-pond-700/70">Sarah Chen · Partner @ Vanguard Capital</p>
+      </header>
+
+      <!-- Scenario context -->
+      <section class="mb-6 bg-white rounded-2xl card-shadow p-6">
+        <h2 class="text-[12px] font-bold uppercase tracking-wider text-pond-700/60 mb-2">The Room</h2>
+        <p class="text-[15px] leading-relaxed text-pond-900">
+          You are about to pitch your startup idea to an AI investor. After your 2-minute pitch, the investor will ask follow-up questions based on what you actually said — your wedge, your traction, your ask.
+        </p>
+      </section>
+
+      <!-- Two-column: Session structure + Investor profile -->
+      <section class="grid lg:grid-cols-[1fr,320px] gap-5 mb-6">
+        <!-- Session structure -->
+        <div class="bg-white rounded-2xl card-shadow p-6">
+          <h2 class="text-[12px] font-bold uppercase tracking-wider text-pond-700/60 mb-4">Session Structure</h2>
+          <ol class="space-y-2.5 text-[13.5px]">
+            <li class="flex gap-3"><span class="shrink-0 w-5 h-5 rounded-full bg-pond-900 text-white text-[10px] font-bold flex items-center justify-center">1</span>Give a 2-minute voice pitch</li>
+            <li class="flex gap-3"><span class="shrink-0 w-5 h-5 rounded-full bg-pond-900 text-white text-[10px] font-bold flex items-center justify-center">2</span>Review the transcript</li>
+            <li class="flex gap-3"><span class="shrink-0 w-5 h-5 rounded-full bg-pond-900 text-white text-[10px] font-bold flex items-center justify-center">3</span>Receive spoken AI feedback</li>
+            <li class="flex gap-3"><span class="shrink-0 w-5 h-5 rounded-full bg-pond-900 text-white text-[10px] font-bold flex items-center justify-center">4</span>Continue into investor Q&amp;A</li>
+            <li class="flex gap-3"><span class="shrink-0 w-5 h-5 rounded-full bg-pond-900 text-white text-[10px] font-bold flex items-center justify-center">5</span>Answer questions by voice</li>
+            <li class="flex gap-3"><span class="shrink-0 w-5 h-5 rounded-full bg-pond-900 text-white text-[10px] font-bold flex items-center justify-center">6</span>Receive your final report</li>
+            <li class="flex gap-3"><span class="shrink-0 w-5 h-5 rounded-full bg-pond-900 text-white text-[10px] font-bold flex items-center justify-center">7</span>Practice again with an improved version</li>
+          </ol>
+        </div>
+
+        <!-- Investor profile -->
+        <div class="bg-white rounded-2xl card-shadow p-6">
+          <h2 class="text-[12px] font-bold uppercase tracking-wider text-pond-700/60 mb-4">Investor Profile</h2>
+          <div class="flex items-center gap-3 mb-4">
+            <img src="https://i.pravatar.cc/200?img=5" alt="Sarah Chen" class="w-14 h-14 rounded-full object-cover ring-1 ring-pond-100" loading="lazy"/>
+            <div>
+              <p class="font-semibold text-[14px]">Sarah Chen</p>
+              <p class="text-[11px] text-pond-700/60">Partner · Vanguard Capital</p>
+            </div>
+          </div>
+          <dl class="space-y-2.5 text-[12.5px]">
+            <div class="flex justify-between gap-3"><dt class="text-pond-700/60">Type</dt><dd class="font-medium text-right">Lead seed investor</dd></div>
+            <div class="flex justify-between gap-3"><dt class="text-pond-700/60">Focus areas</dt><dd class="font-medium text-right">B2B SaaS · AI infra</dd></div>
+            <div class="flex justify-between gap-3"><dt class="text-pond-700/60">Difficulty</dt><dd class="font-medium text-right text-koi-700">Hard</dd></div>
+            <div class="flex justify-between gap-3"><dt class="text-pond-700/60">Question style</dt><dd class="font-medium text-right">Direct · interruptive</dd></div>
+          </dl>
+        </div>
+      </section>
+
+      <!-- Pitch checklist -->
+      <section class="mb-8 bg-white rounded-2xl card-shadow p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-[12px] font-bold uppercase tracking-wider text-pond-700/60">Pitch Checklist</h2>
+          <button id="checklist-toggle" class="text-[11px] text-pond-700/70 hover:text-pond-900">Hide</button>
+        </div>
+        <div id="checklist" class="grid sm:grid-cols-2 gap-x-6 gap-y-2 text-[13.5px]">
+          <span class="check">Problem</span>
+          <span class="check">Target customer</span>
+          <span class="check">Solution</span>
+          <span class="check">Market</span>
+          <span class="check">Competition</span>
+          <span class="check">Business model</span>
+          <span class="check">Traction / validation</span>
+          <span class="check">The Ask</span>
+        </div>
+      </section>
+
+      <!-- CTA -->
+      <section class="flex flex-col sm:flex-row gap-3 sm:items-center justify-between bg-gradient-to-br from-pond-700 via-pond-900 to-[#031F1F] text-white rounded-3xl p-6 md:p-8 shadow-[0_24px_60px_-25px_rgba(10,10,6,0.45)]">
+        <div>
+          <p class="text-[11px] font-semibold uppercase tracking-wider text-white/60 mb-1">Ready when you are</p>
+          <h3 class="text-[20px] md:text-[22px] font-extrabold tracking-tight leading-snug">Your 2-minute pitch begins after the mic check.</h3>
+          <p class="text-[12.5px] text-white/70 mt-1">You can stop early. Minimum 30 seconds.</p>
+        </div>
+        <a href="./session.html?id=skeptical-seed" class="shrink-0 inline-flex items-center justify-center gap-2 bg-koi-500 hover:bg-koi-400 text-pond-900 text-[14px] font-semibold px-6 py-3.5 rounded-full transition shadow-[0_10px_28px_-8px_rgba(255,107,30,0.7)]">
+          Start 2-Minute Pitch
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+        </a>
+      </section>
+
+    </div>
+  </main>
+</div>
+
+<script type="module">
+  // Resolve scenario from URL using the shared module so practice/scenario/session stay in sync.
+  import { getScenario, avatarUrl, isScenarioUnlocked, lockHint } from './lib/scenarios.js';
+  import { getUser } from './lib/supabase.js';
+
+  const id = new URLSearchParams(location.search).get('id') || 'skeptical-seed';
+  const s  = getScenario(id);
+  const user = await getUser().catch(() => null);
+
+  // If the user landed here via a deep link to a locked scenario, refuse — but
+  // explain why and offer a path back to Practice. No silent redirect.
+  if (!isScenarioUnlocked(s, user)) {
+    document.querySelector('main').innerHTML = `
+      <div class="max-w-2xl mx-auto px-5 sm:px-8 py-16 text-center">
+        <div class="w-14 h-14 mx-auto rounded-full bg-pond-900 flex items-center justify-center mb-4">
+          <i data-lucide="lock" class="w-6 h-6 text-koi-500"></i>
+        </div>
+        <p class="text-[11px] uppercase tracking-[0.2em] text-pond-700/55 font-bold mb-2">Locked scenario</p>
+        <h1 class="text-[28px] font-extrabold tracking-tight">${s.title}</h1>
+        <p class="text-[14px] text-pond-700/75 mt-2 max-w-md mx-auto">${lockHint(s)}</p>
+        <div class="mt-7">
+          <a href="./practice.html" class="inline-flex items-center gap-2 bg-koi-500 hover:bg-koi-600 text-pond-900 text-[14px] font-semibold px-5 py-2.5 rounded-full transition shadow-[0_8px_22px_-6px_rgba(255,107,30,0.6)]">
+            Back to scenarios
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+          </a>
+        </div>
+      </div>
+    `;
+    if (window.lucide) lucide.createIcons();
+    throw new Error('locked');  // halt the rest of this script
+  }
+
+  document.getElementById('title').textContent = s.title;
+  document.getElementById('who').textContent   = `${s.name} · ${s.firm}`;
+  document.querySelector('header .flex-wrap').innerHTML = `
+    <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-koi-50 text-koi-700 border border-koi-100">${s.diffLabel}</span>
+    <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-cream-200 text-pond-700">${s.catLabel}</span>
+    <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-cream-200 text-pond-700">${s.stage}</span>
+  `;
+  const profileImg = document.querySelector('section.grid img[alt="Sarah Chen"], section.grid img');
+  if (profileImg) {
+    profileImg.src = avatarUrl(s, 200);
+    profileImg.alt = s.name;
+  }
+  const profileWrap = document.querySelector('section.grid .flex.items-center.gap-3');
+  if (profileWrap) {
+    const ps = profileWrap.querySelectorAll('p');
+    if (ps[0]) ps[0].textContent = s.name;
+    if (ps[1]) ps[1].textContent = s.firm;
+  }
+  const dds = document.querySelectorAll('dl dd');
+  if (dds[0]) dds[0].textContent = s.type;
+  if (dds[1]) dds[1].textContent = s.focus;
+  if (dds[2]) dds[2].textContent = s.diffLabel.charAt(0) + s.diffLabel.slice(1).toLowerCase();
+  if (dds[3]) dds[3].textContent = s.style;
+  document.querySelector('a[href*="session.html"]').href = `./session.html?id=${id}`;
+
+  // Checklist toggle
+  const toggle = document.getElementById('checklist-toggle');
+  const list   = document.getElementById('checklist');
+  toggle.addEventListener('click', () => {
+    const hidden = list.classList.toggle('hidden');
+    toggle.textContent = hidden ? 'View Checklist' : 'Hide';
+  });
+</script>
+
+<script>if(window.lucide)lucide.createIcons();</script>
+</body>
+</html>

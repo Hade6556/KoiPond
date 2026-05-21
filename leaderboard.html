@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Koi Pond — Leaderboard</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./assets/koi.css">
+<script>
+  tailwind.config = {
+    theme: { extend: {
+      fontFamily: { sans: ['Inter','system-ui','sans-serif'] },
+      colors: {
+        koi:  { 50:'#FFF4ED',100:'#FFDCC7',400:'#FF8F4A',500:'#FF6B1E',600:'#E55510',700:'#B53D08' },
+        pond: { 50:'#F5F5F2',100:'#E8E8E2',300:'#A3A39A',500:'#525248',700:'#1A1A14',900:'#0A0A06' },
+        lily: { 50:'#FFF8F2',100:'#FFE0CC',300:'#FFC4A0',400:'#FFA875',500:'#F08858',600:'#C76A40',700:'#9F522F' },
+        cream:{ 50:'#FDFCF5',100:'#FAF7EE',200:'#EFEAD9' }
+      }
+    } }
+  }
+</script>
+<style>
+  body { font-family:'Inter',system-ui,sans-serif; -webkit-font-smoothing:antialiased; background-color: #FAF7EE; position: relative; }
+  body::before { content:""; position: fixed; inset:0; z-index:-1; pointer-events:none; background-image: linear-gradient(180deg, #C9DCEF 0%, #D6E4F2 22%, #E5ECF3 50%, #F0EEE5 78%, #FAF7EE 100%); }
+  .card-shadow { box-shadow: 0 1px 2px rgba(0,0,0,.03), 0 8px 30px -10px rgba(10,10,6,.08); }
+  .nav-link { display:flex; align-items:center; gap:.625rem; padding:.5rem .75rem; border-radius:.625rem; font-size:13.5px; font-weight:500; color:rgba(255,255,255,.7); transition:all .15s; }
+  .nav-link:hover { color:#fff; background:rgba(255,255,255,.08); }
+  .nav-link.active { background:#FF6B1E; color:#fff; }
+  .lb-tab { padding:.5rem .9rem; border-radius:9999px; font-size:12.5px; font-weight:600; color:#1A1A14; background:transparent; border:1px solid #E8E8E2; cursor:pointer; transition:all .15s; }
+  .lb-tab:hover { border-color:#A3A39A; }
+  .lb-tab.active { background:#0A0A06; color:#fff; border-color:#0A0A06; }
+  .scenario-pill { padding:.35rem .75rem; border-radius:9999px; font-size:11.5px; font-weight:600; color:#1A1A14; background:#fff; border:1px solid #E8E8E2; cursor:pointer; transition:all .15s; }
+  .scenario-pill:hover { border-color:#A3A39A; }
+  .scenario-pill.active { background:#FF6B1E; color:#0A0A06; border-color:#E55510; }
+</style>
+<script type="module" src="./lib/auth-gate.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="text-pond-900">
+
+<div class="flex min-h-screen">
+
+  <aside class="hidden md:flex w-60 shrink-0 bg-[#0A0A06]/95 backdrop-blur-md border-r border-white/10 flex-col sticky top-0 h-screen z-30">
+    <a href="./index.html" class="px-5 pt-6 pb-5 flex items-center gap-2">
+      <img src="./assets/koi-pond-logo.svg" alt="Koi Pond" class="logo logo-dark logo-lg w-auto"/>
+    </a>
+    <nav class="flex-1 px-3 py-2 space-y-0.5">
+      <a href="./dashboard.html"   class="nav-link"><i data-lucide="layout-dashboard" class="w-4 h-4"></i>Dashboard</a>
+      <a href="./practice.html"    class="nav-link"><i data-lucide="play"             class="w-4 h-4"></i>Practice</a>
+      <a href="./past-sessions.html" class="nav-link"><i data-lucide="clock"          class="w-4 h-4"></i>Past Sessions</a>
+      <a href="./progress.html"    class="nav-link"><i data-lucide="trending-up"      class="w-4 h-4"></i>Progress</a>
+      <a href="./leaderboard.html" class="nav-link active"><i data-lucide="trophy"    class="w-4 h-4"></i>Leaderboard</a>
+      <a href="./account.html"     class="nav-link"><i data-lucide="user"             class="w-4 h-4"></i>Account</a>
+    </nav>
+    <div class="p-3 border-t border-white/10 space-y-1">
+      <a href="./account.html" class="flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-white/10 transition">
+        <span data-user-avatar class="kp-avatar">U</span>
+        <div class="flex-1 min-w-0">
+          <p data-user-name class="text-[13px] font-semibold truncate text-white">…</p>
+          <p data-user-meta class="text-[11px] text-white/50 truncate">…</p>
+        </div>
+      </a>
+      <button data-signout class="w-full text-left px-2 py-1.5 rounded-lg text-[12px] text-white/65 hover:text-white hover:bg-white/10 transition inline-flex items-center gap-2">
+        <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
+        Sign out
+      </button>
+    </div>
+  </aside>
+
+  <main class="flex-1 min-w-0">
+    <div class="md:hidden flex items-center justify-between px-5 py-4 border-b border-white/10 bg-[#0A0A06]/95 backdrop-blur sticky top-0 z-20 text-white">
+      <a href="./dashboard.html" class="flex items-center gap-2">
+        <img src="./assets/koi-pond-logo.svg" alt="Koi Pond" class="logo logo-dark logo-md w-auto"/>
+      </a>
+      <span data-user-avatar class="kp-avatar">U</span>
+    </div>
+
+    <div class="max-w-5xl mx-auto px-5 sm:px-8 py-8 sm:py-10">
+      <nav class="flex items-center gap-1 mb-6">
+        <button onclick="history.back()" type="button" aria-label="Back" class="w-8 h-8 rounded-full bg-[#0A0A06]/5 hover:bg-[#0A0A06]/10 text-pond-700 hover:text-pond-900 ring-1 ring-pond-100/40 flex items-center justify-center transition">
+          <i data-lucide="chevron-left" class="w-4 h-4"></i>
+        </button>
+      </nav>
+
+      <header class="mb-6">
+        <p class="text-[12px] text-pond-700/60 mb-1">Leaderboard</p>
+        <h1 class="text-[28px] md:text-[32px] font-extrabold tracking-tight">Best pitchers in the pond.</h1>
+        <p class="mt-1.5 text-[14px] text-pond-700/80">Your single best score per scenario, ranked. Public-read — only opted-in users appear. Toggle in <a href="./account.html" class="underline text-pond-900">Account</a>.</p>
+      </header>
+
+      <!-- Opt-in banner — shown when the current user hasn't enabled leaderboard yet -->
+      <div id="lb-optin-banner" class="hidden bg-white border border-pond-100/60 rounded-2xl p-4 mb-5 flex items-start gap-3">
+        <i data-lucide="info" class="w-5 h-5 text-pond-700/70 shrink-0 mt-0.5"></i>
+        <div class="flex-1 min-w-0">
+          <p class="text-[13px] font-extrabold text-pond-900">You're not on the leaderboard yet.</p>
+          <p class="text-[12.5px] text-pond-700/80 mt-0.5">Your scores stay private until you opt in. Pick a public handle and flip the switch in Account settings.</p>
+        </div>
+        <a href="./account.html#leaderboard" class="shrink-0 text-[12px] font-semibold bg-pond-900 hover:bg-pond-700 text-white px-3 py-2 rounded-full transition">Opt in</a>
+      </div>
+
+      <!-- Demo banner — shown when mock entries are visible (i.e. real entries are sparse) -->
+      <div id="lb-demo-banner" class="hidden bg-koi-50 border border-koi-100 rounded-2xl p-4 mb-5 flex items-start gap-3">
+        <i data-lucide="sparkles" class="w-5 h-5 text-koi-700 shrink-0 mt-0.5"></i>
+        <div class="flex-1 min-w-0">
+          <p class="text-[13px] font-extrabold text-pond-900">Some of these are demo entries.</p>
+          <p class="text-[12.5px] text-pond-700/80 mt-0.5">Rows tagged <span class="inline-flex items-center text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-pond-100 text-pond-700/70 align-middle">DEMO</span> are seed data so the boards aren't empty during launch. Real opted-in pitchers always rank above demos and push them off the bottom.</p>
+        </div>
+      </div>
+
+      <!-- Top tabs — Career vs Per-Scenario -->
+      <div class="flex flex-wrap items-center gap-2 mb-5" data-lb-tabs>
+        <button class="lb-tab active" data-lb-tab="career">🏆 Career Score</button>
+        <button class="lb-tab" data-lb-tab="scenario">🎯 Per Scenario</button>
+      </div>
+
+      <!-- Per-scenario picker — only shown when 'scenario' tab is active -->
+      <div id="lb-scenario-picker" class="hidden flex flex-wrap gap-2 mb-5"></div>
+
+      <!-- Section headline + meta -->
+      <div class="flex items-end justify-between gap-3 mb-3">
+        <div class="min-w-0">
+          <p id="lb-headline" class="text-[16px] font-extrabold tracking-tight truncate">Career Score · all scenarios combined</p>
+          <p id="lb-subline" class="text-[12px] text-pond-700/65">Weighted by persona difficulty. Bonus for breadth — try every scenario at least once.</p>
+        </div>
+        <p id="lb-my-rank" class="shrink-0 text-[11px] font-semibold text-pond-700/70 hidden"></p>
+      </div>
+
+      <!-- Leaderboard table -->
+      <div id="lb-table" class="bg-white rounded-2xl card-shadow overflow-hidden">
+        <p class="p-8 text-center text-[13px] text-pond-700/60">Loading…</p>
+      </div>
+
+      <!-- Methodology disclosure — explains anti-gaming + scoring -->
+      <details class="mt-6 bg-cream-100 ring-1 ring-cream-200 rounded-2xl p-5">
+        <summary class="cursor-pointer flex items-center justify-between gap-3 list-none">
+          <div class="min-w-0">
+            <p class="text-[10px] uppercase tracking-[0.2em] text-pond-700/55 font-bold">Methodology</p>
+            <p class="text-[14px] font-extrabold text-pond-900 mt-1">How ranks are calculated · anti-gaming rules</p>
+          </div>
+          <i data-lucide="chevron-down" class="w-5 h-5 text-pond-700/60 group-open:rotate-180 transition-transform shrink-0"></i>
+        </summary>
+        <div class="mt-4 grid md:grid-cols-2 gap-x-6 gap-y-3 text-[12.5px] text-pond-900 leading-snug">
+          <div>
+            <p class="text-[11px] uppercase tracking-wider font-bold text-pond-700/65 mb-2">Anti-gaming rules</p>
+            <ul class="space-y-1.5">
+              <li>• Only one row per (user, scenario) — your single <strong>best score</strong>.</li>
+              <li>• Pitch must be ≥ 30 seconds and at least 2 of 3 Q&A turns answered.</li>
+              <li>• Re-submitting the same transcript word-for-word is silently dropped.</li>
+              <li>• Opt-in is per-user; non-opted entries are invisible to everyone but the owner.</li>
+            </ul>
+          </div>
+          <div>
+            <p class="text-[11px] uppercase tracking-wider font-bold text-pond-700/65 mb-2">Career Score formula</p>
+            <ul class="space-y-1.5">
+              <li>• <strong>weighted_total</strong> = Σ (best_score × difficulty_multiplier)</li>
+              <li>• Multipliers: easy ×1.00 · medium ×1.15 · hard ×1.30 · challenge ×1.45</li>
+              <li>• <strong>career_score</strong> = (weighted_total / scenarios_attempted) × (1 + log₁₀(scenarios) × 0.15)</li>
+              <li>• Rewards both quality (avg) and breadth (log-bonus per scenario tried).</li>
+            </ul>
+          </div>
+        </div>
+      </details>
+
+    </div>
+  </main>
+</div>
+
+<script type="module">
+  import { SCENARIOS, isScenarioUnlocked } from './lib/scenarios.js';
+  import { fetchTopForScenario, fetchCareerLeaders, fetchMyRank } from './lib/leaderboard.js';
+  import { getUser, getProfile } from './lib/supabase.js';
+
+  const $tabs           = document.querySelectorAll('[data-lb-tab]');
+  const $scenarioPicker = document.getElementById('lb-scenario-picker');
+  const $table          = document.getElementById('lb-table');
+  const $headline       = document.getElementById('lb-headline');
+  const $subline        = document.getElementById('lb-subline');
+  const $myRank         = document.getElementById('lb-my-rank');
+  const $optinBanner    = document.getElementById('lb-optin-banner');
+
+  // Show opt-in banner if current user hasn't enabled leaderboard
+  const profile = await getProfile().catch(() => null);
+  const me = await getUser().catch(() => null);
+  if (profile && !profile.leaderboard_opt_in) {
+    $optinBanner.classList.remove('hidden');
+  }
+
+  // Build scenario pills — keep locked personas visible so users see what they're
+  // missing, but mark them with a 🔒 and a tooltip explaining the unlock.
+  $scenarioPicker.innerHTML = Object.values(SCENARIOS).map((s, i) => {
+    const unlocked = isScenarioUnlocked(s, me);
+    const lockTag  = unlocked ? '' : ' <span class="text-pond-700/55">🔒</span>';
+    const title    = unlocked ? '' : ` title="Locked — ${s.unlock?.hint || ''}"`;
+    return `<button class="scenario-pill ${i === 0 ? 'active' : ''}" data-scenario="${s.id}"${title}>${s.title}${lockTag}</button>`;
+  }).join('');
+
+  let activeTab = 'career';
+  let activeScenario = Object.values(SCENARIOS)[0].id;
+
+  function tierEmoji(rank) {
+    if (rank === 1) return '🥇';
+    if (rank === 2) return '🥈';
+    if (rank === 3) return '🥉';
+    return `<span class="tabular-nums text-pond-700/55">${rank}</span>`;
+  }
+
+  function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+  function renderRows(rows, headerCols) {
+    // Surface the demo banner whenever ANY mock entry is shown
+    const hasMock = rows.some(r => r.__mock);
+    document.getElementById('lb-demo-banner').classList.toggle('hidden', !hasMock);
+
+    if (!rows.length) {
+      $table.innerHTML = `
+        <div class="p-10 text-center">
+          <p class="text-[14px] font-semibold text-pond-900">No entries yet.</p>
+          <p class="text-[12.5px] text-pond-700/65 mt-1 max-w-sm mx-auto">Be the first to land here. Run a pitch, opt in from Account, and your best score shows up automatically.</p>
+          <a href="./practice.html" class="inline-flex items-center gap-1.5 mt-4 bg-koi-500 hover:bg-koi-600 text-pond-900 text-[13px] font-semibold px-4 py-2 rounded-full transition">Pick a scenario</a>
+        </div>
+      `;
+      return;
+    }
+    $table.innerHTML = `
+      <div class="grid grid-cols-[40px,1fr,${'auto '.repeat(headerCols.length).trim().split(' ').join(',')}] gap-3 px-5 py-3 border-b border-cream-200 text-[10px] uppercase tracking-wider font-bold text-pond-700/55">
+        <span>#</span>
+        <span>Pitcher</span>
+        ${headerCols.map(h => `<span class="text-right">${h}</span>`).join('')}
+      </div>
+      <div class="divide-y divide-cream-200">
+        ${rows.map((r, i) => {
+          const demoTag = r.__mock
+            ? `<span class="ml-1 inline-flex items-center text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-pond-100 text-pond-700/65" title="Seed data — drops off as real entries fill in">demo</span>`
+            : '';
+          const rowOpacity = r.__mock ? 'opacity-70' : '';
+          return `
+            <div class="grid grid-cols-[40px,1fr,${'auto '.repeat(headerCols.length).trim().split(' ').join(',')}] gap-3 px-5 py-3 items-center hover:bg-cream-50 transition ${rowOpacity}">
+              <span class="text-[14px] font-extrabold text-pond-900">${tierEmoji(i + 1)}</span>
+              <div class="min-w-0 flex items-center gap-2">
+                <span class="kp-avatar">${escapeHtml((r.handle || 'A').slice(0,2))}</span>
+                <span class="text-[13.5px] font-semibold text-pond-900 truncate">${escapeHtml(r.handle || 'Anon')}</span>
+                ${r.country ? `<span class="text-[11px] text-pond-700/55">· ${escapeHtml(r.country)}</span>` : ''}
+                ${demoTag}
+              </div>
+              ${r.__cells.map(c => `<span class="text-right text-[14px] font-extrabold text-pond-900 tabular-nums">${c}</span>`).join('')}
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `;
+  }
+
+  async function renderCareer() {
+    $headline.textContent = 'Career Score · all scenarios combined';
+    $subline.textContent  = 'Weighted by persona difficulty. Bonus for breadth — try every scenario at least once.';
+    $myRank.classList.add('hidden');
+    $scenarioPicker.classList.add('hidden');
+    $table.innerHTML = '<p class="p-8 text-center text-[13px] text-pond-700/60">Loading…</p>';
+    try {
+      const rows = await fetchCareerLeaders(100);
+      const formatted = rows.map(r => ({
+        ...r,
+        __cells: [
+          `${r.scenarios_attempted}<span class="text-[10px] text-pond-700/50 font-semibold">/${Object.keys(SCENARIOS).length}</span>`,
+          `${r.career_score}<span class="text-[10px] text-pond-700/50 font-semibold">pts</span>`
+        ]
+      }));
+      renderRows(formatted, ['Scenarios', 'Score']);
+    } catch (err) {
+      console.error('[leaderboard] career fetch:', err);
+      $table.innerHTML = `<p class="p-8 text-center text-[13px] text-koi-700">Couldn't load — ${escapeHtml(err.message || err)}</p>`;
+    }
+  }
+
+  async function renderScenario(scenarioId) {
+    const s = SCENARIOS[scenarioId];
+    $headline.textContent = s ? `${s.title} · all-time best` : 'Scenario leaderboard';
+    $subline.textContent  = s ? `${s.firm} · ${s.diffLabel} · ${s.style}` : '';
+    $scenarioPicker.classList.remove('hidden');
+    $scenarioPicker.classList.add('flex');
+    $table.innerHTML = '<p class="p-8 text-center text-[13px] text-pond-700/60">Loading…</p>';
+    try {
+      const [rows, my] = await Promise.all([
+        fetchTopForScenario(scenarioId, 100),
+        fetchMyRank(scenarioId)
+      ]);
+      if (my) {
+        $myRank.textContent = `Your rank: #${my.rank} · ${my.score}/100`;
+        $myRank.classList.remove('hidden');
+      } else {
+        $myRank.textContent = 'You haven\'t pitched this scenario yet.';
+        $myRank.classList.remove('hidden');
+      }
+      const formatted = rows.map(r => ({
+        ...r,
+        __cells: [
+          `${r.pitch_score ?? '—'}<span class="text-[10px] text-pond-700/50 font-semibold">/100</span>`,
+          `${r.qa_score ?? '—'}<span class="text-[10px] text-pond-700/50 font-semibold">/100</span>`,
+          `${r.total_score}<span class="text-[10px] text-pond-700/50 font-semibold">/100</span>`
+        ]
+      }));
+      renderRows(formatted, ['Idea', 'Q&A', 'Total']);
+    } catch (err) {
+      console.error('[leaderboard] scenario fetch:', err);
+      $table.innerHTML = `<p class="p-8 text-center text-[13px] text-koi-700">Couldn't load — ${escapeHtml(err.message || err)}</p>`;
+    }
+  }
+
+  function setTab(tab) {
+    activeTab = tab;
+    $tabs.forEach(t => t.classList.toggle('active', t.dataset.lbTab === tab));
+    if (tab === 'career') renderCareer();
+    else                  renderScenario(activeScenario);
+  }
+
+  function setScenario(id) {
+    activeScenario = id;
+    document.querySelectorAll('[data-scenario]').forEach(p => p.classList.toggle('active', p.dataset.scenario === id));
+    renderScenario(id);
+  }
+
+  $tabs.forEach(t => t.addEventListener('click', () => setTab(t.dataset.lbTab)));
+  $scenarioPicker.addEventListener('click', e => {
+    const btn = e.target.closest('[data-scenario]');
+    if (btn) setScenario(btn.dataset.scenario);
+  });
+
+  setTab('career');
+
+  if (window.lucide) lucide.createIcons();
+</script>
+</body>
+</html>

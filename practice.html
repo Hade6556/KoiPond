@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Koi Pond — Practice Library</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./assets/koi.css">
+<script>
+  tailwind.config = {
+    theme: { extend: {
+      fontFamily: { sans: ['Inter','system-ui','sans-serif'] },
+      colors: {
+        koi:  { 50:'#FFF4ED',100:'#FFDCC7',400:'#FF8F4A',500:'#FF6B1E',600:'#E55510',700:'#B53D08' },
+        pond: { 50:'#F5F5F2',100:'#E8E8E2',300:'#A3A39A',500:'#525248',700:'#1A1A14',900:'#0A0A06' },
+        lily: { 50:'#FFF8F2',100:'#FFE0CC',300:'#FFC4A0',400:'#FFA875',500:'#F08858',600:'#C76A40',700:'#9F522F' },
+        cream:{ 50:'#FDFCF5',100:'#FAF7EE',200:'#EFEAD9' }
+      }
+    } }
+  }
+</script>
+<style>
+  body { font-family:'Inter',system-ui,sans-serif; -webkit-font-smoothing:antialiased; background-color: #FAF7EE; position: relative; } body::before { content:""; position: fixed; inset:0; z-index:-1; pointer-events:none; background-image: linear-gradient(180deg, #C9DCEF 0%, #D6E4F2 22%, #E5ECF3 50%, #F0EEE5 78%, #FAF7EE 100%); }
+  .card-shadow { box-shadow: 0 1px 2px rgba(0,0,0,.03), 0 8px 30px -10px rgba(10,10,6,.08); }
+  .nav-link { display:flex; align-items:center; gap:.625rem; padding:.5rem .75rem; border-radius:.625rem; font-size:13.5px; font-weight:500; color:rgba(255,255,255,.7); transition:all .15s; }
+  .nav-link:hover { color:#fff; background:rgba(255,255,255,.08); }
+  .nav-link.active { background:#FF6B1E; color:#fff; }
+  .chip { display:inline-flex; align-items:center; padding:.4rem .85rem; border-radius:999px; font-size:12.5px; font-weight:500; border:1px solid #E8E8E2; background:#fff; color:#1A1A14; cursor:pointer; transition:all .15s; }
+  .chip:hover { border-color:#A3A39A; }
+  .chip.active { background:#0A0A06; color:#fff; border-color:#0A0A06; }
+  .chip.diff { background:#FAF7EE; }
+  .chip.diff.active { background:#FF6B1E; color:#0A0A06; border-color:#E55510; }
+  [hidden] { display:none !important; }
+</style>
+<script type="module" src="./lib/auth-gate.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="text-pond-900">
+
+<div class="flex min-h-screen">
+
+  <!-- Sidebar -->
+  <aside class="hidden md:flex w-60 shrink-0 bg-[#0A0A06]/95 backdrop-blur-md border-r border-white/10 flex-col sticky top-0 h-screen z-30">
+    <a href="./index.html" class="px-5 pt-6 pb-5 flex items-center gap-2">
+      <img src="./assets/koi-pond-logo.svg" alt="Koi Pond" class="logo logo-dark logo-lg w-auto"/>
+    </a>
+    <nav class="flex-1 px-3 py-2 space-y-0.5">
+      <a href="./dashboard.html" class="nav-link">
+        <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
+        Dashboard
+      </a>
+      <a href="./practice.html" class="nav-link active">
+        <i data-lucide="play" class="w-4 h-4"></i>
+        Practice
+      </a>
+      <a href="./past-sessions.html" class="nav-link">
+        <i data-lucide="clock" class="w-4 h-4"></i>
+        Past Sessions
+      </a>
+      <a href="./progress.html" class="nav-link">
+        <i data-lucide="trending-up" class="w-4 h-4"></i>
+        Progress
+      </a>
+      <a href="./leaderboard.html" class="nav-link">
+        <i data-lucide="trophy" class="w-4 h-4"></i>
+        Leaderboard
+      </a>
+      <a href="./account.html" class="nav-link">
+        <i data-lucide="user" class="w-4 h-4"></i>
+        Account
+      </a>
+    </nav>
+    <div class="p-3 border-t border-white/10 space-y-1">
+      <a href="./account.html" class="flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-white/10 transition">
+        <span data-user-avatar class="kp-avatar">U</span>
+        <div class="flex-1 min-w-0">
+          <p data-user-name class="text-[13px] font-semibold truncate text-white">…</p>
+          <p data-user-meta class="text-[11px] text-white/50 truncate">…</p>
+        </div>
+      </a>
+      <button data-signout class="w-full text-left px-2 py-1.5 rounded-lg text-[12px] text-white/65 hover:text-white hover:bg-white/10 transition inline-flex items-center gap-2">
+        <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
+        Sign out
+      </button>
+    </div>
+  </aside>
+
+  <main class="flex-1 min-w-0">
+    <div class="md:hidden flex items-center justify-between px-5 py-4 border-b border-white/10 bg-[#0A0A06]/95 backdrop-blur sticky top-0 z-20 text-white">
+      <a href="./dashboard.html" class="flex items-center gap-2">
+        <img src="./assets/koi-pond-logo.svg" alt="Koi Pond" class="logo logo-dark logo-md w-auto"/>
+      </a>
+      <span data-user-avatar class="kp-avatar">U</span>
+    </div>
+
+    <div class="max-w-6xl mx-auto px-5 sm:px-8 py-8 sm:py-10">
+      <!-- Back / forward nav -->
+      <nav class="flex items-center gap-1 mb-6">
+        <button onclick="history.back()" type="button" aria-label="Back"
+                class="w-8 h-8 rounded-full bg-[#0A0A06]/5 hover:bg-[#0A0A06]/10 text-pond-700 hover:text-pond-900 ring-1 ring-pond-100/40 flex items-center justify-center transition">
+          <i data-lucide="chevron-left" class="w-4 h-4"></i>
+        </button>
+        <button onclick="history.forward()" type="button" aria-label="Forward"
+                class="w-8 h-8 rounded-full bg-[#0A0A06]/5 hover:bg-[#0A0A06]/10 text-pond-700 hover:text-pond-900 ring-1 ring-pond-100/40 flex items-center justify-center transition">
+          <i data-lucide="chevron-right" class="w-4 h-4"></i>
+        </button>
+      </nav>
+
+
+      <!-- Header -->
+      <div class="mb-6">
+        <p class="text-[12px] text-pond-700/60 mb-1">Practice Library</p>
+        <h1 class="text-[28px] md:text-[32px] font-extrabold tracking-tight leading-tight">Pick a pitch situation.</h1>
+        <p class="mt-1.5 text-[14px] text-pond-700/80">Every session is the same shape: 2-minute pitch → investor Q&amp;A → AI feedback. Choose the room you're walking into.</p>
+      </div>
+
+      <!-- Category filters -->
+      <div class="mb-3 flex flex-wrap gap-2" data-filter-group="category">
+        <button class="chip active" data-cat="all">All Scenarios</button>
+        <button class="chip" data-cat="university">University Pitch</button>
+        <button class="chip" data-cat="hackathon">Hackathon Pitch</button>
+        <button class="chip" data-cat="angel">Angel Investor</button>
+        <button class="chip" data-cat="vc">VC Pitch</button>
+        <button class="chip" data-cat="demoday">Demo Day</button>
+        <button class="chip" data-cat="hardmode">Hard Mode</button>
+      </div>
+
+      <!-- Difficulty filters -->
+      <div class="mb-7 flex flex-wrap gap-2" data-filter-group="difficulty">
+        <button class="chip diff active" data-diff="any">Any difficulty</button>
+        <button class="chip diff" data-diff="easy">Easy</button>
+        <button class="chip diff" data-diff="medium">Medium</button>
+        <button class="chip diff" data-diff="hard">Hard</button>
+        <button class="chip diff" data-diff="challenge">Challenge</button>
+      </div>
+
+      <!-- Scenario grid -->
+      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4" id="scenario-grid">
+        <!-- cards injected by JS -->
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<script type="module">
+  // Use the shared scenarios module so practice/scenario/session always show the same set.
+  import { SCENARIOS, avatarUrl, isScenarioUnlocked, lockHint } from './lib/scenarios.js';
+  import { getUser } from './lib/supabase.js';
+  const scenarios = Object.values(SCENARIOS);
+
+  const user = await getUser().catch(() => null);
+
+  const diffStyles = {
+    easy:      { label:'Easy',      cls:'bg-lily-100 text-lily-700 border-lily-200' },
+    medium:    { label:'Medium',    cls:'bg-cream-200 text-pond-700 border-pond-100' },
+    hard:      { label:'Hard',      cls:'bg-koi-50 text-koi-700 border-koi-100' },
+    challenge: { label:'Challenge', cls:'bg-pond-900 text-white border-pond-900' }
+  };
+
+  const grid = document.getElementById('scenario-grid');
+  function render() {
+    const cat  = document.querySelector('[data-cat].active')?.dataset.cat || 'all';
+    const diff = document.querySelector('[data-diff].active')?.dataset.diff || 'any';
+    const filtered = scenarios.filter(s =>
+      (cat === 'all' || s.cat === cat) &&
+      (diff === 'any' || s.diff === diff)
+    );
+    grid.innerHTML = filtered.length === 0
+      ? `<div class="col-span-full text-center py-16 text-pond-700/60 text-[14px]">No scenarios match those filters. Clear one to see more.</div>`
+      : filtered.map(s => {
+        const unlocked = isScenarioUnlocked(s, user);
+        // Locked cards: no <a> wrapper, click shows the unlock hint inline.
+        if (!unlocked) {
+          return `
+            <div class="relative group bg-white rounded-2xl card-shadow p-5 flex flex-col cursor-not-allowed overflow-hidden" data-locked-id="${s.id}" title="${lockHint(s)}">
+              <div class="absolute inset-0 bg-pond-900/45 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity z-10 flex flex-col items-center justify-center text-center px-4">
+                <div class="w-10 h-10 rounded-full bg-pond-900 flex items-center justify-center mb-2">
+                  <i data-lucide="lock" class="w-4 h-4 text-koi-500"></i>
+                </div>
+                <p class="text-[12px] font-extrabold text-white">Locked</p>
+                <p class="text-[11.5px] text-white/85 leading-snug mt-1 max-w-xs">${lockHint(s)}</p>
+              </div>
+              <div class="flex items-start justify-between gap-3 mb-3 opacity-60">
+                <img src="${avatarUrl(s, 200)}" alt="${s.name}" class="w-12 h-12 rounded-full object-cover ring-1 ring-pond-100 grayscale" loading="lazy"/>
+                <span class="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-pond-900 text-koi-500 border-pond-900">
+                  <i data-lucide="lock" class="w-3 h-3"></i> LOCKED
+                </span>
+              </div>
+              <h3 class="text-[15px] font-extrabold tracking-tight leading-snug opacity-75">${s.title}</h3>
+              <p class="text-[11px] text-pond-700/55 mt-1">${s.name} · ${s.firm}</p>
+              <p class="text-[12.5px] text-pond-700/65 mt-3 mb-4 leading-snug flex-1">${s.desc}</p>
+              <div class="mt-auto flex items-center justify-between pt-3 border-t border-cream-200">
+                <span class="text-[11px] text-pond-700/55 font-medium">${s.unlock?.type === 'email_domain' ? '@' + s.unlock.value + ' email required' : 'Locked'}</span>
+                <span class="inline-flex items-center gap-1 text-[12px] font-semibold text-pond-700/55">
+                  <i data-lucide="lock" class="w-3 h-3"></i>
+                  Locked
+                </span>
+              </div>
+            </div>
+          `;
+        }
+        return `
+          <a href="./scenario.html?id=${s.id}" class="group bg-white rounded-2xl card-shadow p-5 flex flex-col hover:-translate-y-0.5 transition">
+            <div class="flex items-start justify-between gap-3 mb-3">
+              <img src="${avatarUrl(s, 200)}" alt="${s.name}" class="w-12 h-12 rounded-full object-cover ring-1 ring-pond-100" loading="lazy"/>
+              <span class="inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full border ${diffStyles[s.diff].cls}">${diffStyles[s.diff].label}</span>
+            </div>
+            <h3 class="text-[15px] font-extrabold tracking-tight leading-snug">${s.title}</h3>
+            <p class="text-[11px] text-pond-700/60 mt-1">${s.name} · ${s.firm}</p>
+            <p class="text-[12.5px] text-pond-700/80 mt-3 mb-4 leading-snug flex-1">${s.desc}</p>
+            <div class="mt-auto flex items-center justify-between pt-3 border-t border-cream-200">
+              <span class="text-[11px] text-pond-700/70 font-medium">2 min pitch + investor Q&amp;A</span>
+              <span class="inline-flex items-center gap-1 text-[12px] font-semibold text-koi-600 group-hover:text-koi-700">
+                Start Practice
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+              </span>
+            </div>
+          </a>
+        `;
+      }).join('');
+    if (window.lucide) lucide.createIcons();
+  }
+
+  function bindGroup(group) {
+    document.querySelectorAll(`[data-filter-group="${group}"] button`).forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll(`[data-filter-group="${group}"] button`).forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        render();
+      });
+    });
+  }
+  bindGroup('category');
+  bindGroup('difficulty');
+  render();
+</script>
+
+<script>if(window.lucide)lucide.createIcons();</script>
+</body>
+</html>

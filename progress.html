@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Koi Pond — Progress</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./assets/koi.css">
+<script>
+  tailwind.config = {
+    theme: { extend: {
+      fontFamily: { sans: ['Inter','system-ui','sans-serif'] },
+      colors: {
+        koi:  { 50:'#FFF4ED',100:'#FFDCC7',400:'#FF8F4A',500:'#FF6B1E',600:'#E55510',700:'#B53D08' },
+        pond: { 50:'#F5F5F2',100:'#E8E8E2',300:'#A3A39A',500:'#525248',700:'#1A1A14',900:'#0A0A06' },
+        lily: { 50:'#FFF8F2',100:'#FFE0CC',300:'#FFC4A0',400:'#FFA875',500:'#F08858',600:'#C76A40',700:'#9F522F' },
+        cream:{ 50:'#FDFCF5',100:'#FAF7EE',200:'#EFEAD9' }
+      }
+    } }
+  }
+</script>
+<style>
+  body { font-family:'Inter',system-ui,sans-serif; -webkit-font-smoothing:antialiased; background-color: #FAF7EE; position: relative; } body::before { content:""; position: fixed; inset:0; z-index:-1; pointer-events:none; background-image: linear-gradient(180deg, #C9DCEF 0%, #D6E4F2 22%, #E5ECF3 50%, #F0EEE5 78%, #FAF7EE 100%); }
+  .card-shadow { box-shadow: 0 1px 2px rgba(0,0,0,.03), 0 8px 30px -10px rgba(10,10,6,.08); }
+  .nav-link { display:flex; align-items:center; gap:.625rem; padding:.5rem .75rem; border-radius:.625rem; font-size:13.5px; font-weight:500; color:rgba(255,255,255,.7); transition:all .15s; }
+  .nav-link:hover { color:#fff; background:rgba(255,255,255,.08); }
+  .nav-link.active { background:#FF6B1E; color:#fff; }
+</style>
+<script type="module" src="./lib/auth-gate.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="text-pond-900">
+
+<div class="flex min-h-screen">
+
+  <aside class="hidden md:flex w-60 shrink-0 bg-[#0A0A06]/95 backdrop-blur-md border-r border-white/10 flex-col sticky top-0 h-screen z-30">
+    <a href="./index.html" class="px-5 pt-6 pb-5 flex items-center gap-2">
+      <img src="./assets/koi-pond-logo.svg" alt="Koi Pond" class="logo logo-dark logo-lg w-auto"/>
+    </a>
+    <nav class="flex-1 px-3 py-2 space-y-0.5">
+      <a href="./dashboard.html" class="nav-link"><i data-lucide="layout-dashboard" class="w-4 h-4"></i>Dashboard</a>
+      <a href="./practice.html" class="nav-link"><i data-lucide="play" class="w-4 h-4"></i>Practice</a>
+      <a href="./past-sessions.html" class="nav-link"><i data-lucide="clock" class="w-4 h-4"></i>Past Sessions</a>
+      <a href="./progress.html" class="nav-link active"><i data-lucide="trending-up" class="w-4 h-4"></i>Progress</a>
+      <a href="./leaderboard.html" class="nav-link"><i data-lucide="trophy" class="w-4 h-4"></i>Leaderboard</a>
+      <a href="./account.html" class="nav-link"><i data-lucide="user" class="w-4 h-4"></i>Account</a>
+    </nav>
+    <div class="p-3 border-t border-white/10 space-y-1">
+      <a href="./account.html" class="flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-white/10 transition">
+        <span data-user-avatar class="kp-avatar">U</span>
+        <div class="flex-1 min-w-0">
+          <p data-user-name class="text-[13px] font-semibold truncate text-white">…</p>
+          <p data-user-meta class="text-[11px] text-white/50 truncate">…</p>
+        </div>
+      </a>
+      <button data-signout class="w-full text-left px-2 py-1.5 rounded-lg text-[12px] text-white/65 hover:text-white hover:bg-white/10 transition inline-flex items-center gap-2">
+        <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
+        Sign out
+      </button>
+    </div>
+  </aside>
+
+  <main class="flex-1 min-w-0">
+    <div class="md:hidden flex items-center justify-between px-5 py-4 border-b border-white/10 bg-[#0A0A06]/95 backdrop-blur sticky top-0 z-20 text-white">
+      <a href="./dashboard.html" class="flex items-center gap-2">
+        <img src="./assets/koi-pond-logo.svg" alt="Koi Pond" class="logo logo-dark logo-md w-auto"/>
+      </a>
+      <span data-user-avatar class="kp-avatar">U</span>
+    </div>
+
+    <div class="max-w-5xl mx-auto px-5 sm:px-8 py-8 sm:py-10">
+      <!-- Back / forward nav -->
+      <nav class="flex items-center gap-1 mb-6">
+        <button onclick="history.back()" type="button" aria-label="Back"
+                class="w-8 h-8 rounded-full bg-[#0A0A06]/5 hover:bg-[#0A0A06]/10 text-pond-700 hover:text-pond-900 ring-1 ring-pond-100/40 flex items-center justify-center transition">
+          <i data-lucide="chevron-left" class="w-4 h-4"></i>
+        </button>
+        <button onclick="history.forward()" type="button" aria-label="Forward"
+                class="w-8 h-8 rounded-full bg-[#0A0A06]/5 hover:bg-[#0A0A06]/10 text-pond-700 hover:text-pond-900 ring-1 ring-pond-100/40 flex items-center justify-center transition">
+          <i data-lucide="chevron-right" class="w-4 h-4"></i>
+        </button>
+      </nav>
+
+
+      <header class="mb-7">
+        <p class="text-[12px] text-pond-700/60 mb-1">Progress</p>
+        <h1 id="pg-headline" class="text-[28px] md:text-[32px] font-extrabold tracking-tight">Loading your progress…</h1>
+        <p id="pg-subtitle" class="mt-1.5 text-[14px] text-pond-700/80">&nbsp;</p>
+      </header>
+
+      <!-- Empty state -->
+      <section id="pg-empty" class="hidden bg-white rounded-2xl border border-pond-100/60 p-10 text-center">
+        <p class="text-[16px] font-extrabold text-pond-900">No progress to chart yet.</p>
+        <p class="mt-2 text-[13px] text-pond-700/65 max-w-md mx-auto">Progress needs at least one completed pitch. Run a session and we'll start tracking your trend, skill breakdown, and weak spots.</p>
+        <a href="./practice.html" class="inline-flex items-center gap-1.5 mt-5 bg-koi-500 hover:bg-koi-600 text-pond-900 text-[13px] font-semibold px-4 py-2 rounded-full transition">
+          Pick a scenario <i data-lucide="arrow-right" class="w-3 h-3"></i>
+        </a>
+      </section>
+
+      <div id="pg-content" class="hidden">
+
+      <!-- Headline metrics -->
+      <section class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-7">
+        <div class="bg-gradient-to-br from-lily-50 to-lily-100/60 rounded-2xl ring-1 ring-lily-100 p-4">
+          <p class="text-[10px] uppercase tracking-wider font-bold text-lily-700">Pitch readiness</p>
+          <p class="text-[32px] font-extrabold tracking-tight mt-1"><span id="pg-readiness">—</span><span class="text-[12px] font-semibold text-pond-700/60">/100</span></p>
+          <p id="pg-readiness-delta" class="text-[11px] text-lily-700 font-semibold mt-0.5">&nbsp;</p>
+        </div>
+        <div class="bg-white card-shadow rounded-2xl p-4">
+          <p class="text-[10px] uppercase tracking-wider font-bold text-pond-700/60">Avg pitch score</p>
+          <p id="pg-avg-pitch" class="text-[32px] font-extrabold tracking-tight mt-1">—</p>
+          <p id="pg-avg-pitch-delta" class="text-[11px] text-pond-700/60 mt-0.5">&nbsp;</p>
+        </div>
+        <div class="bg-white card-shadow rounded-2xl p-4">
+          <p class="text-[10px] uppercase tracking-wider font-bold text-pond-700/60">Avg Q&amp;A score</p>
+          <p id="pg-avg-qa" class="text-[32px] font-extrabold tracking-tight mt-1">—</p>
+          <p id="pg-avg-qa-delta" class="text-[11px] text-pond-700/60 mt-0.5">&nbsp;</p>
+        </div>
+        <div class="bg-white card-shadow rounded-2xl p-4">
+          <p class="text-[10px] uppercase tracking-wider font-bold text-pond-700/60">Best attempt</p>
+          <p id="pg-best" class="text-[32px] font-extrabold tracking-tight mt-1">—</p>
+          <p id="pg-best-meta" class="text-[11px] text-pond-700/60 mt-0.5">&nbsp;</p>
+        </div>
+      </section>
+
+      <!-- Score over time -->
+      <section class="bg-white rounded-2xl card-shadow p-6 mb-5">
+        <div class="flex items-end justify-between mb-3">
+          <div>
+            <h2 class="text-[16px] font-extrabold tracking-tight">Score over time</h2>
+            <p id="pg-chart-meta" class="text-[12px] text-pond-700/60">&nbsp;</p>
+          </div>
+          <div class="flex items-center gap-3 text-[11px]">
+            <span class="inline-flex items-center gap-1.5 text-pond-700"><span class="w-2.5 h-2.5 rounded-full bg-lily-500"></span> Pitch</span>
+            <span class="inline-flex items-center gap-1.5 text-pond-700"><span class="w-2.5 h-2.5 rounded-full bg-koi-500"></span> Q&amp;A</span>
+          </div>
+        </div>
+        <div class="relative h-48">
+          <svg id="pg-chart" viewBox="0 0 700 200" preserveAspectRatio="none" class="w-full h-full">
+            <defs>
+              <linearGradient id="area-p" x1="0" x2="0" y1="0" y2="1">
+                <stop offset="0%" stop-color="#94944A" stop-opacity=".22"/>
+                <stop offset="100%" stop-color="#94944A" stop-opacity="0"/>
+              </linearGradient>
+              <pattern id="grid" width="64" height="40" patternUnits="userSpaceOnUse">
+                <path d="M 64 0 L 0 0 0 40" fill="none" stroke="#E8E8E2" stroke-width="1"/>
+              </pattern>
+            </defs>
+            <rect width="700" height="200" fill="url(#grid)"/>
+            <path id="pg-pitch-area" fill="url(#area-p)"/>
+            <path id="pg-pitch-line" fill="none" stroke="#94944A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path id="pg-qa-line" fill="none" stroke="#FF6B1E" stroke-width="2" stroke-dasharray="4 4" stroke-linecap="round"/>
+            <circle id="pg-pitch-dot" r="6" fill="#94944A" stroke="#fff" stroke-width="2.5"/>
+            <circle id="pg-qa-dot" r="5" fill="#FF6B1E" stroke="#fff" stroke-width="2"/>
+          </svg>
+          <div id="pg-chart-badge" class="absolute top-2 right-2 bg-pond-900 text-white text-[11px] px-2.5 py-1 rounded-full">&nbsp;</div>
+        </div>
+        <div id="pg-chart-axis" class="flex justify-between text-[10px] text-pond-700/50 px-1 mt-2">
+          <span>start</span><span>now</span>
+        </div>
+      </section>
+
+      <!-- Skill breakdown -->
+      <section class="bg-white rounded-2xl card-shadow p-6 mb-5">
+        <div class="flex items-end justify-between mb-4">
+          <div>
+            <h2 class="text-[16px] font-extrabold tracking-tight">Skill breakdown</h2>
+            <p class="text-[12px] text-pond-700/60">Average across last 5 sessions</p>
+          </div>
+        </div>
+        <div id="skill-bars" class="grid sm:grid-cols-2 gap-x-8 gap-y-3"></div>
+      </section>
+
+      <!-- Bottom row: weakness history + recommended -->
+      <section class="grid lg:grid-cols-3 gap-5">
+
+        <!-- Weakness history -->
+        <div class="lg:col-span-2 bg-white rounded-2xl card-shadow p-6">
+          <h2 class="text-[16px] font-extrabold tracking-tight mb-1">Weakness history</h2>
+          <p id="pg-weak-meta" class="text-[12px] text-pond-700/60 mb-4">Which areas the AI keeps flagging</p>
+          <div id="pg-weak-list" class="space-y-3"></div>
+
+          <hr class="my-5 border-cream-200"/>
+          <div id="pg-callouts" class="grid sm:grid-cols-3 gap-3 text-[12px]"></div>
+        </div>
+
+        <!-- Recommended next -->
+        <div class="bg-gradient-to-br from-pond-700 via-pond-900 to-[#031F1F] text-white rounded-2xl p-6 relative overflow-hidden">
+          <svg class="absolute -bottom-12 -right-10 w-56 h-56 opacity-[0.08] text-white" viewBox="0 0 200 200" fill="none">
+            <circle cx="100" cy="100" r="20" fill="currentColor"/>
+            <circle cx="100" cy="100" r="50" stroke="currentColor" stroke-width="1.5"/>
+            <circle cx="100" cy="100" r="80" stroke="currentColor" stroke-width="1.5"/>
+          </svg>
+          <div class="relative">
+            <p class="text-[10px] uppercase tracking-wider font-bold text-white/60">Recommended next</p>
+            <h3 class="text-[18px] font-extrabold tracking-tight leading-snug mt-1">Pricing Pushback Drill</h3>
+            <p class="text-[12px] text-white/70 mt-2 leading-relaxed">You keep losing points on The Ask. This persona forces you to defend price and amount in every answer.</p>
+            <a href="./scenario.html?id=pricing-pushback" class="inline-flex items-center gap-1.5 mt-5 bg-koi-500 hover:bg-koi-400 text-pond-900 text-[13px] font-semibold px-4 py-2 rounded-full transition shadow-[0_8px_22px_-6px_rgba(255,107,30,0.6)]">
+              Start drill
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+            </a>
+          </div>
+        </div>
+      </section>
+
+      </div><!-- /#pg-content -->
+
+    </div>
+  </main>
+</div>
+
+<script type="module">
+  import { listSessions } from './lib/supabase.js';
+
+  const $headline = document.getElementById('pg-headline');
+  const $subtitle = document.getElementById('pg-subtitle');
+  const $empty    = document.getElementById('pg-empty');
+  const $content  = document.getElementById('pg-content');
+
+  function avg(arr) {
+    const nums = arr.filter(n => typeof n === 'number');
+    if (!nums.length) return null;
+    return Math.round(nums.reduce((a, b) => a + b, 0) / nums.length);
+  }
+  function relDay(ts) {
+    const d = new Date(ts);
+    const days = Math.floor((Date.now() - d.getTime()) / 86400000);
+    if (days < 1)  return 'today';
+    if (days < 2)  return 'yesterday';
+    if (days < 30) return `${days} days ago`;
+    return d.toLocaleDateString();
+  }
+
+  let sessions = [];
+  try {
+    sessions = await listSessions({ limit: 100 });
+  } catch (err) {
+    console.error('[progress] load failed:', err);
+  }
+
+  if (!sessions || sessions.length === 0) {
+    $headline.textContent = 'No progress to chart yet.';
+    $subtitle.textContent = 'Run your first pitch to start tracking your trend.';
+    $empty.classList.remove('hidden');
+  } else {
+    // sessions are sorted by created_at DESC from the helper. Reverse for chrono.
+    const chron = [...sessions].reverse();
+    const total = sessions.length;
+    const first = chron[0];
+    const last  = chron[chron.length - 1];
+
+    const avgPitch = avg(sessions.map(s => s.pitch_score));
+    const avgQa    = avg(sessions.map(s => s.qa_score));
+    const best     = sessions.reduce((max, s) => (s.total_score ?? -1) > (max.total_score ?? -1) ? s : max, sessions[0]);
+    const readiness = avg([last.total_score, last.pitch_score, last.qa_score].filter(n => n != null));
+    const startScore = first.total_score ?? 0;
+    const delta = (last.total_score ?? 0) - startScore;
+
+    $headline.textContent = `${total} session${total > 1 ? 's' : ''} in. ${delta > 0 ? "You're getting sharper." : delta < 0 ? "Refocus needed." : "Keep at it."}`;
+    $subtitle.textContent = total === 1
+      ? 'One run on the board. Run another to see your trend line.'
+      : `${delta > 0 ? '+' : ''}${delta} point${Math.abs(delta) === 1 ? '' : 's'} since your first attempt.`;
+
+    document.getElementById('pg-readiness').textContent = readiness ?? '—';
+    if (delta !== 0) document.getElementById('pg-readiness-delta').textContent = `${delta > 0 ? '↑' : '↓'} ${Math.abs(delta)} from start`;
+    document.getElementById('pg-avg-pitch').textContent = avgPitch ?? '—';
+    document.getElementById('pg-avg-qa').textContent    = avgQa ?? '—';
+    document.getElementById('pg-best').textContent      = best.total_score ?? '—';
+    document.getElementById('pg-best-meta').textContent = `${best.scenario_title || 'Session'} · ${relDay(best.created_at)}`;
+
+    // Chart
+    document.getElementById('pg-chart-meta').textContent = `${total} session${total > 1 ? 's' : ''}`;
+    const W = 700, H = 200;
+    const pitchVals = chron.map(s => s.pitch_score ?? s.total_score ?? 0);
+    const qaVals    = chron.map(s => s.qa_score ?? s.total_score ?? 0);
+    const allVals = [...pitchVals, ...qaVals].filter(v => typeof v === 'number');
+    const lo = Math.max(0, Math.min(...allVals) - 8);
+    const hi = Math.min(100, Math.max(...allVals) + 8);
+    const span = Math.max(1, hi - lo);
+    const xAt = i => chron.length === 1 ? W / 2 : (i / (chron.length - 1)) * W;
+    const yAt = v => H - 20 - ((v - lo) / span) * (H - 40);
+    const buildLine = vals => vals.map((v, i) => `${i === 0 ? 'M' : 'L'} ${xAt(i).toFixed(1)} ${yAt(v).toFixed(1)}`).join(' ');
+    const pitchPath = buildLine(pitchVals);
+    const qaPath    = buildLine(qaVals);
+    document.getElementById('pg-pitch-line').setAttribute('d', pitchPath);
+    document.getElementById('pg-qa-line').setAttribute('d', qaPath);
+    document.getElementById('pg-pitch-area').setAttribute('d', `${pitchPath} L ${xAt(chron.length - 1).toFixed(1)} ${H} L ${xAt(0).toFixed(1)} ${H} Z`);
+    document.getElementById('pg-pitch-dot').setAttribute('cx', xAt(chron.length - 1).toFixed(1));
+    document.getElementById('pg-pitch-dot').setAttribute('cy', yAt(pitchVals[pitchVals.length - 1]).toFixed(1));
+    document.getElementById('pg-qa-dot').setAttribute('cx',    xAt(chron.length - 1).toFixed(1));
+    document.getElementById('pg-qa-dot').setAttribute('cy',    yAt(qaVals[qaVals.length - 1]).toFixed(1));
+    document.getElementById('pg-chart-badge').textContent = `${relDay(last.created_at)} · ${last.total_score ?? '—'}/100`;
+    document.getElementById('pg-chart-axis').innerHTML =
+      `<span>${relDay(first.created_at)}</span><span>${relDay(last.created_at)}</span>`;
+
+    // Skill breakdown — from scorecard jsonb if present
+    const skillTotals = {};
+    sessions.slice(0, 5).forEach(s => {
+      if (s.scorecard && typeof s.scorecard === 'object') {
+        Object.entries(s.scorecard).forEach(([k, v]) => {
+          if (typeof v === 'number') {
+            skillTotals[k] = skillTotals[k] || { sum: 0, n: 0 };
+            skillTotals[k].sum += v;
+            skillTotals[k].n   += 1;
+          }
+        });
+      }
+    });
+    const skills = Object.entries(skillTotals)
+      .map(([name, { sum, n }]) => ({ name, cur: Math.round(sum / n) }))
+      .sort((a, b) => b.cur - a.cur);
+    const $skills = document.getElementById('skill-bars');
+    if (skills.length === 0) {
+      $skills.innerHTML = `<p class="col-span-2 text-[12.5px] text-pond-700/55 italic">Per-skill breakdown will appear once The Shark grades a few more sessions.</p>`;
+    } else {
+      $skills.innerHTML = skills.map(s => `
+        <div>
+          <div class="flex justify-between text-[12.5px] mb-1">
+            <span>${s.name}</span>
+            <span class="text-pond-700/60 font-mono">${s.cur}</span>
+          </div>
+          <div class="h-1.5 rounded-full bg-cream-200 overflow-hidden"><div class="h-full bg-lily-500" style="width:${s.cur}%"></div></div>
+        </div>
+      `).join('');
+    }
+
+    // Weakness history — count weak_area frequency
+    const weakCounts = {};
+    sessions.forEach(s => {
+      if (s.weak_area) weakCounts[s.weak_area] = (weakCounts[s.weak_area] || 0) + 1;
+    });
+    const weakSorted = Object.entries(weakCounts).sort((a, b) => b[1] - a[1]).slice(0, 4);
+    const $weakMeta = document.getElementById('pg-weak-meta');
+    const $weakList = document.getElementById('pg-weak-list');
+    if (weakSorted.length === 0) {
+      $weakMeta.textContent = 'No weak-area data yet.';
+      $weakList.innerHTML = '';
+    } else {
+      $weakMeta.textContent = `Across ${total} session${total > 1 ? 's' : ''}`;
+      $weakList.innerHTML = weakSorted.map(([area, n], i) => {
+        const pct = Math.round((n / total) * 100);
+        const tone = i === 0 ? 'bg-koi-500' : 'bg-koi-400';
+        return `
+          <div>
+            <div class="flex justify-between text-[12.5px] mb-1">
+              <span class="font-semibold">${area}</span>
+              <span class="text-pond-700/60">Flagged in ${n} of ${total}</span>
+            </div>
+            <div class="h-2 rounded-full bg-cream-200 overflow-hidden"><div class="h-full ${tone}" style="width:${pct}%"></div></div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // Callouts: most practiced + best + stubborn
+    const scenarioCounts = {};
+    sessions.forEach(s => {
+      const k = s.scenario_title || 'Session';
+      scenarioCounts[k] = (scenarioCounts[k] || 0) + 1;
+    });
+    const mostPracticed = Object.entries(scenarioCounts).sort((a, b) => b[1] - a[1])[0];
+    const stubbornArea  = weakSorted[0]?.[0];
+    document.getElementById('pg-callouts').innerHTML = `
+      ${mostPracticed ? `
+        <div class="bg-cream-100 rounded-lg p-3">
+          <p class="text-pond-700/60 uppercase tracking-wider font-bold text-[10px]">Most practiced</p>
+          <p class="font-semibold mt-1 truncate">${mostPracticed[0]}</p>
+          <p class="text-pond-700/60 text-[11px]">${mostPracticed[1]} session${mostPracticed[1] > 1 ? 's' : ''}</p>
+        </div>` : ''}
+      <div class="bg-cream-100 rounded-lg p-3">
+        <p class="text-pond-700/60 uppercase tracking-wider font-bold text-[10px]">Best attempt</p>
+        <p class="font-semibold mt-1 truncate">${best.scenario_title || 'Session'}</p>
+        <p class="text-lily-600 text-[11px]">${best.total_score}/100</p>
+      </div>
+      ${stubbornArea ? `
+        <div class="bg-cream-100 rounded-lg p-3">
+          <p class="text-pond-700/60 uppercase tracking-wider font-bold text-[10px]">Most stubborn</p>
+          <p class="font-semibold mt-1 truncate">${stubbornArea}</p>
+          <p class="text-koi-600 text-[11px]">Flagged ${weakCounts[stubbornArea]}×</p>
+        </div>` : ''}
+    `;
+
+    $content.classList.remove('hidden');
+  }
+
+  if (window.lucide) lucide.createIcons();
+</script>
+
+<script>if(window.lucide)lucide.createIcons();</script>
+</body>
+</html>

@@ -1,0 +1,3369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Koi Pond — Practice Session</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./assets/koi.css">
+<script type="module" src="./lib/auth-gate.js"></script>
+<script type="module">
+  // PDF.js — used for deck upload + slide rendering. Loaded as ESM module then
+  // hoisted to window so the inline IIFE can reach it.
+  import * as pdfjsLib from 'https://esm.sh/pdfjs-dist@4.0.379/build/pdf.mjs';
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://esm.sh/pdfjs-dist@4.0.379/build/pdf.worker.mjs';
+  window.pdfjsLib = pdfjsLib;
+  window.dispatchEvent(new Event('pdfjs:ready'));
+
+  // Scenarios — single source of truth, hoisted so the inline IIFE can reach them.
+  import { SCENARIOS, getScenario, avatarUrl, isScenarioUnlocked, lockHint } from './lib/scenarios.js';
+  window.koiPondScenarios = { SCENARIOS, getScenario, avatarUrl, isScenarioUnlocked, lockHint };
+  window.dispatchEvent(new Event('scenarios:ready'));
+
+  // Hard gate: if the user reached session.html?id=<locked> by URL hacking,
+  // bounce them to scenario.html so they get the proper locked-state explanation.
+  try {
+    const sid = new URLSearchParams(location.search).get('id');
+    if (sid && SCENARIOS[sid]?.locked) {
+      const { getUser } = await import('./lib/supabase.js');
+      const user = await getUser().catch(() => null);
+      if (!isScenarioUnlocked(SCENARIOS[sid], user)) {
+        location.replace(`./scenario.html?id=${encodeURIComponent(sid)}`);
+        throw new Error('locked-redirect');
+      }
+    }
+  } catch (e) {
+    if (e.message === 'locked-redirect') throw e;  // stop module evaluation
+    console.warn('[lock-gate] check failed:', e?.message || e);
+  }
+
+  // Language preference — read from localStorage first (instant), then refresh from Supabase profile.
+  // Coach API calls below read `window.koiPondLang` ('en' | 'lt' | 'mix').
+  try { window.koiPondLang = localStorage.getItem('koipond-lang') || 'en'; } catch { window.koiPondLang = 'en'; }
+  try {
+    const { getLanguage, savePitchSession } = await import('./lib/supabase.js');
+    const { submitToLeaderboard } = await import('./lib/leaderboard.js');
+    const fresh = await getLanguage().catch(() => null);
+    if (fresh) {
+      window.koiPondLang = fresh;
+      try { localStorage.setItem('koipond-lang', fresh); } catch {}
+    }
+    // Hoist saver + leaderboard submitter so the inline script can use them
+    window.koiPondSave            = savePitchSession;
+    window.koiPondSubmitToBoard   = submitToLeaderboard;
+  } catch (e) {
+    console.warn('[lang] could not fetch profile language:', e?.message || e);
+  }
+</script>
+<script>
+  tailwind.config = {
+    theme: { extend: {
+      fontFamily: { sans: ['Inter','system-ui','sans-serif'] },
+      colors: {
+        koi:  { 50:'#FFF4ED',100:'#FFDCC7',400:'#FF8F4A',500:'#FF6B1E',600:'#E55510',700:'#B53D08' },
+        pond: { 50:'#F5F5F2',100:'#E8E8E2',300:'#A3A39A',500:'#525248',700:'#1A1A14',900:'#0A0A06' },
+        lily: { 50:'#FFF8F2',100:'#FFE0CC',300:'#FFC4A0',400:'#FFA875',500:'#F08858',600:'#C76A40',700:'#9F522F' },
+        cream:{ 50:'#FDFCF5',100:'#FAF7EE',200:'#EFEAD9' }
+      }
+    } }
+  }
+</script>
+<style>
+  body { font-family:'Inter',system-ui,sans-serif; -webkit-font-smoothing:antialiased; background-color: #FAF7EE; position: relative; } body::before { content:""; position: fixed; inset:0; z-index:-1; pointer-events:none; background-image: linear-gradient(180deg, #C9DCEF 0%, #D6E4F2 22%, #E5ECF3 50%, #F0EEE5 78%, #FAF7EE 100%); }
+  .card-shadow { box-shadow: 0 1px 2px rgba(0,0,0,.03), 0 8px 30px -10px rgba(10,10,6,.08); }
+  .check::before {
+    content:""; display:inline-block; width:14px; height:14px;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23525248' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><polyline points='20 6 9 17 4 12'/></svg>");
+    background-size:contain; background-repeat:no-repeat; margin-right:6px; vertical-align:-2px;
+  }
+  [data-step] { display: none; }
+  [data-step].active { display: block; }
+  .pulse-ring { animation: pulse 2s ease-out infinite; }
+  @keyframes pulse { 0% { transform:scale(.9); opacity:.6 } 70% { transform:scale(1.3); opacity:0 } 100% { opacity:0 } }
+  .vis-bar { transition: height .08s ease; }
+  .progress-shimmer { background: linear-gradient(90deg, transparent, rgba(255,255,255,.4), transparent); animation: shimmer 1.4s linear infinite; background-size: 300% 100%; }
+  @keyframes shimmer { 0% { background-position: 200% 0 } 100% { background-position: -100% 0 } }
+</style>
+<script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="text-pond-900">
+
+<!-- Minimal top bar -->
+<header class="border-b border-pond-100/60 bg-white/70 backdrop-blur-md sticky top-0 z-40">
+  <div class="max-w-5xl mx-auto px-5 sm:px-8 h-14 flex items-center justify-between">
+      <!-- Back / forward nav -->
+      <nav class="flex items-center gap-1 mb-6">
+        <button onclick="history.back()" type="button" aria-label="Back"
+                class="w-8 h-8 rounded-full bg-[#0A0A06]/5 hover:bg-[#0A0A06]/10 text-pond-700 hover:text-pond-900 ring-1 ring-pond-100/40 flex items-center justify-center transition">
+          <i data-lucide="chevron-left" class="w-4 h-4"></i>
+        </button>
+        <button onclick="history.forward()" type="button" aria-label="Forward"
+                class="w-8 h-8 rounded-full bg-[#0A0A06]/5 hover:bg-[#0A0A06]/10 text-pond-700 hover:text-pond-900 ring-1 ring-pond-100/40 flex items-center justify-center transition">
+          <i data-lucide="chevron-right" class="w-4 h-4"></i>
+        </button>
+      </nav>
+
+    <a href="./dashboard.html" class="flex items-center gap-2">
+      <img src="./assets/koi-pond-logo.svg" alt="Koi Pond" class="logo logo-sm w-auto"/>
+    </a>
+    <div id="step-indicator" class="hidden sm:flex items-center gap-1.5 text-[11px] text-pond-700/70 font-medium"></div>
+    <button id="exit-btn" class="text-[12px] text-pond-700/70 hover:text-pond-900 inline-flex items-center gap-1">
+      <i data-lucide="x" class="w-3 h-3"></i>
+      Exit session
+    </button>
+  </div>
+</header>
+
+<main class="max-w-3xl mx-auto px-5 sm:px-8 py-8 sm:py-12">
+
+  <!-- ============ STEP 1: SETUP (length + mic required + camera/screen optional) ============ -->
+  <section data-step="mic" class="active">
+    <div class="text-center mb-6">
+      <p class="text-[11px] uppercase tracking-[0.2em] text-pond-700/60 font-bold mb-2">PITCH SETUP</p>
+      <h1 class="text-[28px] font-extrabold tracking-tight">Pick your length, grant your mic.</h1>
+      <p class="mt-2 text-[14px] text-pond-700/80 max-w-md mx-auto">Mic is required. Camera unlocks body-language feedback; screen + deck unlock slide critique. Skip both for an audio-only run.</p>
+    </div>
+
+    <!-- Pitch length selector — required, defaults to 2 min -->
+    <div class="bg-white rounded-2xl card-shadow p-5 mb-4">
+      <p class="text-[11px] uppercase tracking-[0.18em] text-pond-700/60 font-bold mb-1">PITCH LENGTH</p>
+      <p class="text-[12px] text-pond-700/70 mb-3">Hard-stops at the time you pick. You can also End early after 30 seconds.</p>
+      <div class="grid grid-cols-4 gap-2" data-pitch-len-group>
+        <button data-pitch-len="120" class="pitch-len-btn active border border-pond-900 bg-pond-900 text-white text-[13px] font-semibold py-2.5 rounded-full transition">2 min</button>
+        <button data-pitch-len="180" class="pitch-len-btn border border-cream-200 bg-white text-pond-900 text-[13px] font-semibold py-2.5 rounded-full hover:border-pond-300 transition">3 min</button>
+        <button data-pitch-len="240" class="pitch-len-btn border border-cream-200 bg-white text-pond-900 text-[13px] font-semibold py-2.5 rounded-full hover:border-pond-300 transition">4 min</button>
+        <button data-pitch-len="300" class="pitch-len-btn border border-cream-200 bg-white text-pond-900 text-[13px] font-semibold py-2.5 rounded-full hover:border-pond-300 transition">5 min</button>
+      </div>
+    </div>
+
+    <!-- Deck upload (optional) -->
+    <div id="deck-upload" class="bg-white rounded-2xl card-shadow p-5 mb-4">
+      <div class="flex items-start justify-between mb-3">
+        <div>
+          <p class="text-[11px] uppercase tracking-[0.18em] text-pond-700/60 font-bold">DECK · OPTIONAL</p>
+          <h3 class="text-[15px] font-extrabold mt-1">Pitch with your slides.</h3>
+          <p class="text-[12px] text-pond-700/70 mt-0.5">Drop in a PDF and present from inside Koi Pond. Arrow keys navigate during the pitch.</p>
+        </div>
+      </div>
+
+      <!-- Drop zone (initial) -->
+      <label id="deck-drop" for="deck-input" class="block cursor-pointer rounded-xl border-2 border-dashed border-cream-200 hover:border-koi-500 hover:bg-koi-50/40 transition px-5 py-7 text-center">
+        <div class="w-12 h-12 mx-auto rounded-full bg-pond-50 flex items-center justify-center mb-3">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1A1A14" stroke-width="1.8"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        </div>
+        <p class="text-[14px] font-semibold text-pond-900">Drop your deck here, or click to browse</p>
+        <p class="text-[11.5px] text-pond-700/60 mt-1">PDF only · Up to 20 MB</p>
+        <input id="deck-input" type="file" accept="application/pdf,.pdf" class="hidden"/>
+      </label>
+
+      <!-- Loaded state -->
+      <div id="deck-loaded" hidden>
+        <div class="flex items-center gap-4 p-3 rounded-xl bg-cream-200/40 ring-1 ring-cream-50/40">
+          <div class="w-16 h-20 rounded-md bg-pond-900 overflow-hidden ring-1 ring-cream-50/30 shrink-0 flex items-center justify-center">
+            <canvas id="deck-thumb" class="max-w-full max-h-full"></canvas>
+          </div>
+          <div class="flex-1 min-w-0">
+            <p id="deck-filename" class="text-[13px] font-semibold truncate">deck.pdf</p>
+            <p id="deck-meta" class="text-[11.5px] text-pond-700/60 mt-0.5">— slides</p>
+          </div>
+          <button id="deck-remove" class="text-[12px] font-medium text-pond-700/70 hover:text-koi-700 px-3 py-1.5 rounded-full hover:bg-koi-50 transition">Remove</button>
+        </div>
+        <div id="deck-thumbs" class="mt-3 grid grid-cols-6 sm:grid-cols-8 gap-1.5"></div>
+      </div>
+
+      <p id="deck-error" hidden class="mt-3 text-[12px] text-koi-700 bg-koi-50 border border-koi-100 rounded-lg px-3 py-2"></p>
+    </div>
+
+    <!-- Three permission rows -->
+    <div class="bg-white rounded-2xl card-shadow overflow-hidden mb-4" id="perm-card">
+
+      <div data-perm="mic" class="flex items-center gap-4 p-4 border-b border-cream-200">
+        <div class="w-10 h-10 rounded-full bg-pond-50 flex items-center justify-center shrink-0">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1A1A14" stroke-width="1.8"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+        </div>
+        <div class="flex-1 min-w-0">
+          <p class="text-[13.5px] font-semibold">Microphone <span class="ml-1.5 text-[10px] font-bold tracking-wider text-koi-700 uppercase">Required</span></p>
+          <p class="text-[11px] text-pond-700/60">For your voice pitch + live transcript.</p>
+        </div>
+        <span data-status="mic" class="text-[10px] font-bold uppercase tracking-wider text-pond-700/40">○ Not granted</span>
+        <button data-allow="mic" class="text-[12px] font-semibold bg-koi-500 hover:bg-koi-600 text-pond-900 px-3.5 py-2 rounded-full transition">Allow</button>
+      </div>
+
+      <div data-perm="camera" class="flex items-center gap-4 p-4 border-b border-cream-200">
+        <div class="w-10 h-10 rounded-full bg-pond-50 flex items-center justify-center shrink-0">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1A1A14" stroke-width="1.8"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3.5"/></svg>
+        </div>
+        <div class="flex-1 min-w-0">
+          <p class="text-[13.5px] font-semibold">Camera <span class="ml-1.5 text-[10px] font-bold tracking-wider text-pond-700/55 uppercase">Optional</span></p>
+          <p class="text-[11px] text-pond-700/60">Unlocks body-language, eye-contact, and reading-from-script reads.</p>
+        </div>
+        <span data-status="camera" class="text-[10px] font-bold uppercase tracking-wider text-pond-700/40">○ Skipped</span>
+        <button data-allow="camera" class="text-[12px] font-semibold bg-koi-500 hover:bg-koi-600 text-pond-900 px-3.5 py-2 rounded-full transition">Allow</button>
+      </div>
+
+      <div data-perm="screen" class="flex items-center gap-4 p-4">
+        <div class="w-10 h-10 rounded-full bg-pond-50 flex items-center justify-center shrink-0">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1A1A14" stroke-width="1.8"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+        </div>
+        <div class="flex-1 min-w-0">
+          <p class="text-[13.5px] font-semibold">Screen recording <span class="ml-1.5 text-[10px] font-bold tracking-wider text-pond-700/55 uppercase">Optional</span></p>
+          <p class="text-[11px] text-pond-700/60">Lets the coach grade slide pacing alongside your words.</p>
+        </div>
+        <span data-status="screen" class="text-[10px] font-bold uppercase tracking-wider text-pond-700/40">○ Skipped</span>
+        <button data-allow="screen" class="text-[12px] font-semibold bg-koi-500 hover:bg-koi-600 text-pond-900 px-3.5 py-2 rounded-full transition">Allow</button>
+      </div>
+    </div>
+
+    <!-- Begin pitch -->
+    <div class="text-center">
+      <button id="setup-begin" disabled class="inline-flex items-center justify-center gap-2 bg-koi-500 hover:bg-koi-600 disabled:bg-pond-100 disabled:text-pond-700/50 disabled:cursor-not-allowed text-pond-900 text-[15px] font-semibold px-7 py-3.5 rounded-full transition shadow-[0_8px_22px_-6px_rgba(255,107,30,0.6)]">
+        Begin pitch
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+      </button>
+      <p id="setup-hint" class="text-[11px] text-pond-700/60 mt-3">Allow your microphone to start. Camera + screen are optional but unlock more feedback.</p>
+      <a href="./scenario.html" class="block mt-3 text-[11px] text-pond-700/50 hover:text-pond-900">Back to scenario</a>
+    </div>
+
+    <!-- Denied/help state -->
+    <div id="perm-help" hidden class="mt-4 bg-koi-50 border border-koi-100 rounded-xl p-4 text-[12.5px] text-koi-700">
+      <p class="font-semibold mb-1">A permission was denied.</p>
+      <p>Open your browser's site settings, allow the blocked permission, and click <em>Allow</em> again. On macOS, also check System Settings → Privacy & Security → Screen Recording for the browser.</p>
+    </div>
+  </section>
+
+  <!-- ============ STEP 2: LIVE PITCH ============ -->
+  <section data-step="record">
+    <!-- SLIDE STAGE — shown only when a deck is loaded. Camera shrinks to PIP. -->
+    <div id="slide-stage" hidden class="relative aspect-video max-h-[440px] mx-auto bg-pond-900 rounded-3xl mb-4 overflow-hidden ring-1 ring-cream-50/30 shadow-elevated">
+      <canvas id="slide-canvas" class="absolute inset-0 w-full h-full object-contain bg-pond-900"></canvas>
+
+      <!-- Slide counter -->
+      <div class="absolute top-3 left-3 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur text-white text-[11px] font-bold tracking-wider tabular-nums">
+        <span id="slide-num">1</span><span class="text-white/40">/</span><span id="slide-count">—</span>
+      </div>
+
+      <!-- Live pill -->
+      <div class="absolute top-3 right-3 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur text-white text-[10px] font-bold tracking-wider">
+        <span class="w-1.5 h-1.5 rounded-full bg-koi-500 animate-pulse"></span>
+        LIVE
+      </div>
+
+      <!-- Picture-in-picture camera self-view -->
+      <video id="slide-cam" autoplay muted playsinline class="absolute bottom-3 right-3 w-32 h-24 md:w-44 md:h-32 rounded-xl object-cover ring-2 ring-white/40 shadow-floating bg-cream-100" style="transform: scaleX(-1)"></video>
+
+      <!-- Prev / next navigation arrows -->
+      <button id="slide-prev" type="button" class="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/55 backdrop-blur hover:bg-black/75 disabled:opacity-30 text-white flex items-center justify-center transition" aria-label="Previous slide">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <button id="slide-next" type="button" class="absolute left-16 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/55 backdrop-blur hover:bg-black/75 disabled:opacity-30 text-white flex items-center justify-center transition" aria-label="Next slide">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+      </button>
+
+      <!-- Arrow-key hint -->
+      <div class="absolute bottom-3 left-3 hidden md:inline-flex items-center gap-2 text-[10.5px] text-white/55 font-medium">
+        <span class="inline-flex items-center gap-0.5">
+          <kbd class="px-1.5 py-0.5 rounded bg-white/10 ring-1 ring-white/15">←</kbd>
+          <kbd class="px-1.5 py-0.5 rounded bg-white/10 ring-1 ring-white/15">→</kbd>
+        </span>
+        <span>or click arrows to navigate</span>
+      </div>
+
+      <!-- Progress strip across the bottom -->
+      <div class="absolute bottom-0 left-0 right-0 h-[3px] bg-white/10">
+        <div id="slide-progress" class="h-full bg-koi-500" style="width:0%"></div>
+      </div>
+    </div>
+
+    <!-- Self-view: mirrored camera so the pitcher can see themselves (no-deck path) -->
+    <div id="cam-preview-wrap" class="hidden relative aspect-video max-h-[260px] mx-auto bg-cream-100 rounded-3xl mb-4 overflow-hidden ring-1 ring-cream-50/30 shadow-elevated">
+      <video id="cam-preview" autoplay muted playsinline class="w-full h-full object-cover" style="transform: scaleX(-1)"></video>
+      <div class="absolute top-3 left-3 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/55 backdrop-blur text-white text-[10px] font-bold tracking-wider">
+        <span class="w-1.5 h-1.5 rounded-full bg-koi-500 animate-pulse"></span>
+        YOU · LIVE
+      </div>
+      <div id="cam-fallback" class="hidden absolute inset-0 flex items-center justify-center text-pond-700/70 text-[12px]">
+        Camera not connected — grant access in setup.
+      </div>
+    </div>
+
+    <!-- Live pitch hero card -->
+    <div class="relative overflow-hidden rounded-3xl bg-gradient-to-br from-pond-700 via-pond-900 to-[#031F1F] text-white p-6 md:p-8 mb-4">
+      <svg class="absolute -top-12 -right-12 w-72 h-72 opacity-[0.08] text-white pointer-events-none" viewBox="0 0 200 200" fill="none">
+        <circle cx="100" cy="100" r="20" fill="currentColor"/>
+        <circle cx="100" cy="100" r="50" stroke="currentColor" stroke-width="1.5"/>
+        <circle cx="100" cy="100" r="80" stroke="currentColor" stroke-width="1.5"/>
+        <circle cx="100" cy="100" r="110" stroke="currentColor" stroke-width="1.5"/>
+      </svg>
+
+      <div class="relative">
+        <!-- top row: investor + live status -->
+        <div class="flex items-center justify-between gap-3 mb-6">
+          <div class="flex items-center gap-3">
+            <div class="relative">
+              <img data-investor-img alt="" class="w-12 h-12 rounded-full object-cover ring-2 ring-white/20" src="https://i.pravatar.cc/100?img=5"/>
+              <span class="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-lily-500 ring-2 ring-pond-900"></span>
+            </div>
+            <div>
+              <p class="font-semibold text-[14px]" data-investor-name>Sarah Chen</p>
+              <p class="text-[11px] text-white/60" id="investor-mood"><span data-investor-firm>Partner · Vanguard Capital</span> · Listening</p>
+            </div>
+          </div>
+          <div id="live-pill" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/10 text-white/80 text-[10px] font-bold tracking-wider">
+            <span id="live-dot" class="w-1.5 h-1.5 rounded-full bg-white/40"></span>
+            <span id="live-status">READY</span>
+          </div>
+        </div>
+
+        <!-- Big countdown -->
+        <div class="text-center mb-5">
+          <p class="text-[10px] uppercase tracking-[0.2em] text-white/50 font-bold mb-1">Time remaining</p>
+          <p id="timer-display" class="text-[80px] md:text-[96px] font-extrabold tracking-tighter tabular-nums leading-none">—:—</p>
+        </div>
+
+        <!-- Progress -->
+        <div class="h-1 bg-white/10 rounded-full overflow-hidden mb-5">
+          <div id="timer-bar" class="h-full bg-koi-500 transition-all duration-200" style="width:0%"></div>
+        </div>
+
+        <!-- Visualizer -->
+        <div id="record-vis" class="flex items-end justify-center gap-1 h-14"></div>
+      </div>
+    </div>
+
+    <!-- Live transcript -->
+    <div class="bg-white rounded-2xl card-shadow p-5 mb-4 min-h-[140px] max-h-[260px] overflow-y-auto">
+      <div class="flex items-center justify-between mb-2 gap-3">
+        <p class="text-[10px] uppercase tracking-wider text-pond-700/60 font-bold">Live transcript</p>
+        <div class="flex items-center gap-3">
+          <span id="transcribe-status" class="inline-flex items-center gap-1.5 text-[10px] font-semibold text-pond-700/50">
+            <span id="transcribe-dot" class="w-1.5 h-1.5 rounded-full bg-pond-300"></span>
+            <span id="transcribe-label">Idle</span>
+          </span>
+          <span id="word-count" class="text-[10px] text-pond-700/50 font-medium">0 words</span>
+        </div>
+      </div>
+      <p id="live-transcript" class="text-[14.5px] leading-relaxed text-pond-900">
+        <span class="text-pond-700/40 italic">Your words will appear here as you speak…</span>
+      </p>
+    </div>
+
+    <!-- Single live CTA -->
+    <div class="flex flex-col items-center gap-2">
+      <button id="pitch-start" class="inline-flex items-center gap-2 bg-koi-500 hover:bg-koi-600 text-pond-900 text-[15px] font-semibold px-8 py-3.5 rounded-full transition shadow-[0_10px_28px_-8px_rgba(255,107,30,0.7)]">
+        <span class="w-2 h-2 rounded-full bg-white"></span>
+        Begin Pitch
+      </button>
+      <button id="pitch-end" hidden disabled class="inline-flex items-center gap-2 bg-pond-900 disabled:bg-pond-900/50 hover:bg-pond-700 text-white text-[15px] font-semibold px-8 py-3.5 rounded-full transition">
+        <span class="inline-flex items-center justify-center w-4 h-4 rounded-sm bg-white"><span class="w-2 h-2 rounded-sm bg-pond-900"></span></span>
+        <span id="pitch-end-label">End Pitch (30s minimum)</span>
+      </button>
+      <p id="pitch-hint" class="text-[11.5px] text-pond-700/60 mt-1">No pause, no restart — pitch like it's the real room. Auto-ends at 0:00.</p>
+    </div>
+
+    <!-- Checklist -->
+    <div class="mt-5 bg-white rounded-2xl card-shadow p-5">
+      <p class="text-[10px] uppercase tracking-wider text-pond-700/60 font-bold mb-3">Cover these in your pitch</p>
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2 text-[12.5px]">
+        <span class="check">Problem</span>
+        <span class="check">Customer</span>
+        <span class="check">Solution</span>
+        <span class="check">Market</span>
+        <span class="check">Competition</span>
+        <span class="check">Business model</span>
+        <span class="check">Traction</span>
+        <span class="check">The Ask</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ STEP 3: PROCESSING ============ -->
+  <section data-step="processing">
+    <div class="bg-white rounded-3xl card-shadow p-8 md:p-10 text-center">
+      <div class="w-14 h-14 mx-auto rounded-full bg-pond-50 ring-1 ring-pond-100 flex items-center justify-center mb-5">
+        <svg class="animate-spin text-pond-700" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 1 1-6.219-8.56" stroke-linecap="round"/></svg>
+      </div>
+      <h2 class="text-[22px] font-extrabold tracking-tight">Processing your pitch</h2>
+      <p class="text-[13px] text-pond-700/70 mt-1">This takes about 20 seconds.</p>
+
+      <ul class="mt-6 max-w-sm mx-auto space-y-2.5 text-left">
+        <li id="proc-1" class="flex items-center gap-3 text-[13px] text-pond-700">
+          <span class="proc-dot w-4 h-4 rounded-full border-2 border-pond-300 shrink-0"></span>
+          Uploading your pitch
+        </li>
+        <li id="proc-2" class="flex items-center gap-3 text-[13px] text-pond-700/50">
+          <span class="proc-dot w-4 h-4 rounded-full border-2 border-pond-300 shrink-0"></span>
+          Transcribing your speech
+        </li>
+        <li id="proc-3" class="flex items-center gap-3 text-[13px] text-pond-700/50">
+          <span class="proc-dot w-4 h-4 rounded-full border-2 border-pond-300 shrink-0"></span>
+          Analyzing pitch structure
+        </li>
+        <li id="proc-4" class="flex items-center gap-3 text-[13px] text-pond-700/50">
+          <span class="proc-dot w-4 h-4 rounded-full border-2 border-pond-300 shrink-0"></span>
+          Preparing coach feedback
+        </li>
+        <li id="proc-5" class="flex items-center gap-3 text-[13px] text-pond-700/50">
+          <span class="proc-dot w-4 h-4 rounded-full border-2 border-pond-300 shrink-0"></span>
+          Generating investor questions
+        </li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ============ STEP 4: TRANSCRIPT REVIEW ============ -->
+  <section data-step="transcript">
+    <div class="mb-5">
+      <h2 class="text-[24px] font-extrabold tracking-tight">Review your transcript</h2>
+      <p class="text-[13px] text-pond-700/70 mt-1">Fix any mis-heard words before the AI analyzes your pitch. Numbers, names, and startup terms are most common.</p>
+    </div>
+
+    <div class="bg-white rounded-2xl card-shadow p-5">
+      <div class="flex items-center gap-3 mb-3 pb-3 border-b border-cream-200">
+        <button id="transcript-play" class="w-9 h-9 rounded-full bg-pond-900 text-white flex items-center justify-center hover:bg-pond-700 transition">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>
+        </button>
+        <div class="flex-1">
+          <div class="h-1.5 rounded-full bg-cream-200 overflow-hidden">
+            <div id="transcript-progress" class="h-full bg-koi-500 transition-all" style="width:0%"></div>
+          </div>
+          <div class="flex justify-between text-[10px] text-pond-700/60 mt-1">
+            <span>0:00</span>
+            <span id="transcript-duration">1:48</span>
+          </div>
+        </div>
+      </div>
+      <textarea id="transcript-text" class="w-full min-h-[220px] p-4 bg-cream-50 rounded-xl text-[14px] leading-relaxed focus:outline-none focus:ring-2 focus:ring-pond-300 resize-y" spellcheck="false"></textarea>
+      <div class="mt-4 flex flex-wrap items-center justify-between gap-2">
+        <button id="transcript-rerecord" class="text-[13px] font-medium text-pond-700/70 hover:text-pond-900 inline-flex items-center gap-1.5">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+          Record again
+        </button>
+        <button id="transcript-continue" class="inline-flex items-center gap-2 bg-koi-500 hover:bg-koi-600 text-pond-900 text-[14px] font-semibold px-5 py-2.5 rounded-full transition shadow-[0_8px_22px_-6px_rgba(255,107,30,0.6)]">
+          Continue
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ STEP 5: ANALYZING (between transcript and feedback) ============ -->
+  <section data-step="analyzing">
+    <div class="bg-white rounded-3xl card-shadow p-8 md:p-10">
+      <div class="text-center">
+        <div class="w-14 h-14 mx-auto rounded-full bg-pond-50 ring-1 ring-pond-100 flex items-center justify-center mb-5">
+          <svg class="animate-spin text-pond-700" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 1 1-6.219-8.56" stroke-linecap="round"/></svg>
+        </div>
+        <h2 class="text-[22px] font-extrabold tracking-tight">Analyzing your pitch</h2>
+        <p class="text-[13px] text-pond-700/70 mt-1">Two AI passes running in parallel — one on words, one on body language.</p>
+      </div>
+      <ul id="analyzing-ladder" class="mt-7 max-w-sm mx-auto space-y-2.5"></ul>
+    </div>
+  </section>
+
+  <!-- ============ STEP 6: SPOKEN AI FEEDBACK ============ -->
+  <section data-step="feedback">
+
+    <!-- EMPTY STATE — shown when both coach + visual analyses bailed -->
+    <div id="feedback-empty" class="hidden bg-white rounded-3xl card-shadow p-8 md:p-10 text-center border border-koi-200">
+      <div class="w-14 h-14 mx-auto rounded-full bg-koi-50 border border-koi-200 flex items-center justify-center mb-4">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#C73B1A" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="13"/><circle cx="12" cy="16" r=".8" fill="currentColor"/></svg>
+      </div>
+      <h2 class="text-[22px] font-extrabold tracking-tight">The Shark needs a real pitch.</h2>
+      <p id="feedback-empty-reason" class="mt-2 text-[13.5px] text-pond-700/80 max-w-md mx-auto">Your recording was too short or empty. Pitch for at least 30 seconds with your camera and mic on, then try again.</p>
+      <div class="mt-6 flex flex-wrap items-center justify-center gap-2">
+        <a href="./scenario.html" class="text-[13px] font-medium text-pond-700/70 hover:text-pond-900 px-4 py-2.5">Back to scenario</a>
+        <button id="feedback-retry" class="inline-flex items-center gap-2 bg-koi-500 hover:bg-koi-600 text-pond-900 text-[14px] font-semibold px-5 py-2.5 rounded-full transition shadow-[0_8px_22px_-6px_rgba(255,90,60,0.6)]">
+          Try again
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- NORMAL FEEDBACK CONTENT WRAPPER -->
+    <div id="feedback-content">
+    <div class="text-center mb-6">
+      <p class="text-[11px] uppercase tracking-wider text-pond-700/60 font-bold">COACH FEEDBACK</p>
+      <h2 class="text-[28px] md:text-[32px] font-extrabold tracking-tight mt-1">Hear it. Read it. Fix it.</h2>
+      <p class="text-[13px] text-pond-700/70 mt-1">60 seconds of audio coaching, broken down by what worked, what didn't, and what to change.</p>
+    </div>
+
+    <!-- AUDIO PLAYER (pond depth) -->
+    <div class="bg-gradient-to-br from-pond-700 via-pond-900 to-[#031F1F] text-white rounded-3xl p-6 md:p-7 mb-5 relative overflow-hidden">
+      <svg class="absolute -top-10 -right-10 w-56 h-56 opacity-[0.08] text-white pointer-events-none" viewBox="0 0 200 200" fill="none">
+        <circle cx="100" cy="100" r="20" fill="currentColor"/>
+        <circle cx="100" cy="100" r="50" stroke="currentColor" stroke-width="1.5"/>
+        <circle cx="100" cy="100" r="80" stroke="currentColor" stroke-width="1.5"/>
+      </svg>
+      <div class="relative flex items-center gap-4">
+        <button id="fb-play" class="w-14 h-14 rounded-full bg-koi-500 hover:bg-koi-400 text-pond-900 flex items-center justify-center transition shadow-[0_10px_24px_-6px_rgba(255,107,30,0.7)] shrink-0">
+          <svg id="fb-play-icon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>
+        </button>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center justify-between gap-3 mb-1">
+            <p class="font-semibold text-[14px] truncate">The Shark</p>
+            <div class="flex items-center gap-1.5 text-[11px] text-white/60 shrink-0">
+              <span>Speed</span>
+              <select id="fb-speed" class="bg-white/10 text-white text-[11px] rounded-md px-1.5 py-0.5 outline-none">
+                <option value="0.9">0.9×</option>
+                <option value="1" selected>1×</option>
+                <option value="1.2">1.2×</option>
+                <option value="1.5">1.5×</option>
+              </select>
+            </div>
+          </div>
+          <div class="h-1 rounded-full bg-white/15 overflow-hidden">
+            <div id="fb-progress" class="h-full bg-koi-500 transition-all" style="width:0%"></div>
+          </div>
+          <p class="text-[11px] text-white/60 mt-1.5">Cold logic. No fluff. ~45 seconds.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- TRANSCRIPT — exactly what the audio above just said -->
+    <section class="bg-white rounded-2xl card-shadow p-6 md:p-7 mb-4">
+      <p class="text-[10px] uppercase tracking-[0.2em] text-pond-700/55 font-bold mb-3">TRANSCRIPT</p>
+      <p id="fb-script-transcript" class="text-[15px] text-pond-900 leading-[1.7] whitespace-pre-wrap">—</p>
+    </section>
+
+    <!-- VISUAL PRESENCE — Gemini's read on body language, eye contact, reading from script -->
+    <section id="fb-visual-card" class="hidden bg-white rounded-2xl card-shadow p-6 md:p-7 mb-4">
+      <div class="flex items-start justify-between gap-4 mb-3">
+        <div class="min-w-0">
+          <p class="text-[10px] uppercase tracking-[0.2em] text-pond-700/55 font-bold">Presence &amp; delivery</p>
+          <p class="text-[10.5px] text-pond-700/45 mt-0.5">Read from your camera by Gemini</p>
+        </div>
+        <div class="text-right shrink-0 -mt-1">
+          <span id="fb-presence-score" class="text-[24px] font-extrabold tracking-tight text-pond-900 tabular-nums">—</span><span class="text-[12px] text-pond-700/55 font-semibold">/100</span>
+        </div>
+      </div>
+      <p id="fb-visual-script" class="text-[14.5px] text-pond-900 leading-[1.65]">—</p>
+
+      <!-- Diagnostic banner — shown when Gemini failed or returned mostly unknowns -->
+      <div id="fb-visual-diag" class="hidden mt-4 rounded-xl bg-cream-200 ring-1 ring-pond-100 px-4 py-3 flex items-start gap-3">
+        <i data-lucide="alert-circle" class="w-4 h-4 text-pond-700 shrink-0 mt-0.5"></i>
+        <div class="min-w-0">
+          <p class="text-[12px] font-bold uppercase tracking-wider text-pond-700">Visual analysis</p>
+          <p id="fb-visual-diag-text" class="text-[13px] text-pond-900 leading-snug mt-1">—</p>
+        </div>
+      </div>
+
+      <!-- Reading-from-script badge (shown only when Gemini detected it) -->
+      <div id="fb-reading-flag" class="hidden mt-4 rounded-xl bg-koi-50 ring-1 ring-koi-200 px-4 py-3 flex items-start gap-3">
+        <i data-lucide="book-open" class="w-4 h-4 text-koi-700 shrink-0 mt-0.5"></i>
+        <div class="min-w-0">
+          <p class="text-[12px] font-bold uppercase tracking-wider text-koi-700">Reading from script detected</p>
+          <p id="fb-reading-evidence" class="text-[13px] text-pond-900 leading-snug mt-1">—</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- DELIVERY BREAKDOWN — every dimension renders; unknowns dim with an honest caption -->
+    <section id="fb-delivery-card" class="hidden bg-white rounded-2xl card-shadow p-6 md:p-7 mb-4">
+      <div class="flex items-baseline justify-between mb-4">
+        <p class="text-[10px] uppercase tracking-[0.2em] text-pond-700/55 font-bold">Delivery breakdown</p>
+        <p class="text-[10.5px] text-pond-700/45">Read from your camera by Gemini</p>
+      </div>
+      <div id="fb-delivery-grid" class="grid sm:grid-cols-2 gap-4"></div>
+    </section>
+
+    <!-- SLIDES REVIEW — per-slide critique from Gemini (only shown when a deck was uploaded) -->
+    <section id="slides-card" class="hidden bg-white rounded-2xl card-shadow p-6 md:p-7 mb-4">
+      <div class="flex items-baseline justify-between mb-4">
+        <p class="text-[10px] uppercase tracking-[0.2em] text-pond-700/55 font-bold">Slides review</p>
+        <p class="text-[10.5px] text-pond-700/45">Read from your deck by Gemini</p>
+      </div>
+      <div id="deck-verdict" class="hidden mb-4 rounded-xl bg-cream-100 ring-1 ring-cream-200 px-4 py-3">
+        <p id="deck-verdict-title" class="text-[13.5px] font-extrabold text-pond-900">—</p>
+        <p id="deck-verdict-note"  class="text-[12.5px] text-pond-700/80 leading-snug mt-1">—</p>
+      </div>
+      <div id="slide-reviews" class="space-y-2.5"></div>
+    </section>
+
+    <!-- IDEA VERDICT — Build it / Maybe / Skip it + why + YC-rubric meaning -->
+    <section id="fb-verdict-card" class="hidden bg-white rounded-2xl card-shadow p-6 md:p-7 mb-4">
+      <div class="flex items-start justify-between gap-4 mb-3">
+        <div class="min-w-0 flex-1">
+          <p class="text-[10px] uppercase tracking-[0.2em] text-pond-700/55 font-bold mb-2">Verdict · Y Combinator rubric</p>
+          <p id="fb-verdict-label" class="text-[28px] sm:text-[32px] font-extrabold tracking-tight leading-none text-pond-900">—</p>
+          <p id="fb-verdict-meaning" class="text-[12px] text-pond-700/70 mt-2 leading-snug">—</p>
+        </div>
+        <div id="fb-verdict-badge" class="shrink-0 inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-full bg-pond-100 text-pond-700"></div>
+      </div>
+      <p id="fb-verdict-why" class="text-[14.5px] text-pond-900 leading-[1.65]">—</p>
+    </section>
+
+    <!-- ONE RATING — overall score from the 5-dimension idea evaluation -->
+    <section class="bg-white rounded-2xl card-shadow p-6 md:p-7 mb-4 flex items-end justify-between gap-4">
+      <div class="min-w-0">
+        <p class="text-[10px] uppercase tracking-[0.2em] text-pond-700/55 font-bold">Idea score</p>
+        <p id="fb-rating-tier" class="text-[14.5px] text-pond-700/75 mt-2 max-w-xs leading-snug">—</p>
+      </div>
+      <div class="text-right shrink-0">
+        <p class="leading-none">
+          <span id="fb-rating-score" class="text-[56px] sm:text-[64px] font-extrabold tracking-tight text-pond-900 tabular-nums">—</span><span class="text-[18px] text-pond-700/55 font-semibold">/100</span>
+        </p>
+      </div>
+    </section>
+
+    <!-- COMPETITORS — real existing products in the same space -->
+    <section id="fb-competitors-card" class="hidden bg-white rounded-2xl card-shadow p-6 md:p-7 mb-4">
+      <p class="text-[10px] uppercase tracking-[0.2em] text-pond-700/55 font-bold mb-4">Similar existing products</p>
+      <div id="fb-competitors-list" class="space-y-3"></div>
+    </section>
+
+    <!-- WHAT WOULD MAKE THIS STRONGER -->
+    <section id="fb-stronger-card" class="hidden bg-white rounded-2xl card-shadow p-6 md:p-7 mb-5">
+      <p class="text-[10px] uppercase tracking-[0.2em] text-pond-700/55 font-bold mb-4">What would make this stronger</p>
+      <ol id="fb-stronger-list" class="space-y-3 list-none"></ol>
+    </section>
+
+    <!-- YC RUBRIC — what each band means + what each lens checks. Always visible. -->
+    <details class="bg-cream-100 rounded-2xl ring-1 ring-cream-200 p-5 mb-5 group">
+      <summary class="cursor-pointer flex items-center justify-between gap-3 list-none">
+        <div class="min-w-0">
+          <p class="text-[10px] uppercase tracking-[0.2em] text-pond-700/55 font-bold">How this score is calculated</p>
+          <p class="text-[14px] font-extrabold text-pond-900 mt-1">The Y Combinator rubric · 6 lenses, 6 bands</p>
+          <p class="text-[12px] text-pond-700/70 mt-1">Anchored in PG essays, Sam Altman's playbook, and Michael Seibel's YC Startup School lectures.</p>
+        </div>
+        <i data-lucide="chevron-down" class="w-5 h-5 text-pond-700/60 group-open:rotate-180 transition-transform shrink-0"></i>
+      </summary>
+
+      <div class="mt-5 grid md:grid-cols-2 gap-x-6 gap-y-4">
+        <div>
+          <p class="text-[11px] uppercase tracking-wider font-bold text-pond-700/65 mb-2">The 6 YC lenses</p>
+          <ul class="space-y-1.5 text-[12.5px] text-pond-900 leading-snug">
+            <li><strong>A · Make Something People Want</strong> — paying users beat survey data. <span class="text-pond-700/60">(Market + Demand)</span></li>
+            <li><strong>B · Default Alive vs Default Dead</strong> — does revenue cover burn? <span class="text-pond-700/60">(Monetization)</span></li>
+            <li><strong>C · Schlep Blindness</strong> — why hasn't a giant done this? <span class="text-pond-700/60">(Market defensibility)</span></li>
+            <li><strong>D · 10x Better, Not 10%</strong> — wedge has to be a step-change. <span class="text-pond-700/60">(Interest)</span></li>
+            <li><strong>E · Talk to Users</strong> — quote real users, not McKinsey. <span class="text-pond-700/60">(Feasibility)</span></li>
+            <li><strong>F · Tarpit Ideas</strong> — known graveyard patterns auto-fail. <span class="text-pond-700/60">(Market)</span></li>
+          </ul>
+        </div>
+        <div>
+          <p class="text-[11px] uppercase tracking-wider font-bold text-pond-700/65 mb-2">The 6 score bands</p>
+          <ul class="space-y-1.5 text-[12.5px] text-pond-900 leading-snug">
+            <li><span class="inline-block w-14 text-pond-700/60 tabular-nums">90–100</span> <strong>YC-ready</strong> · would survive a Day-1 partner grilling</li>
+            <li><span class="inline-block w-14 text-pond-700/60 tabular-nums">75–89</span> <strong>Strong</strong> · fundable as-is at angel/pre-seed</li>
+            <li><span class="inline-block w-14 text-pond-700/60 tabular-nums">60–74</span> <strong>Watch</strong> · one lens fails — fix and re-pitch</li>
+            <li><span class="inline-block w-14 text-pond-700/60 tabular-nums">45–59</span> <strong>Weak</strong> · fails 2+ lenses — rewrite after 10 user calls</li>
+            <li><span class="inline-block w-14 text-pond-700/60 tabular-nums">30–44</span> <strong>Critical</strong> · fails 3+ lenses — won't attract tier-1 capital</li>
+            <li><span class="inline-block w-14 text-pond-700/60 tabular-nums">0–29</span>  <strong>Tarpit</strong> · not a startup — kill it and pick something else</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="mt-5 pt-4 border-t border-cream-200">
+        <p class="text-[11px] uppercase tracking-wider font-bold text-pond-700/65 mb-2">Verdict mapping</p>
+        <ul class="space-y-1 text-[12.5px] text-pond-900 leading-snug">
+          <li><span class="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-lily-100 text-lily-700">✓ Build it</span> ≥ 4 dimensions in the 75+ band, no dimension below 50, monetization defensible</li>
+          <li><span class="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-koi-100 text-koi-700">~ Maybe</span> mixed signals — strong on idea, weak on monetization or feasibility</li>
+          <li><span class="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-pond-900 text-white">✕ Skip it</span> 3+ dimensions below 55, OR any single dimension below 30, OR matches a tarpit pattern</li>
+        </ul>
+      </div>
+    </details>
+
+    <!-- CTA strip -->
+    <div class="bg-white rounded-2xl card-shadow p-4 flex flex-wrap items-center justify-between gap-2">
+      <button id="fb-replay" class="text-[13px] font-medium text-pond-700/70 hover:text-pond-900 inline-flex items-center gap-1.5 px-3 py-2">
+        <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+        Replay feedback
+      </button>
+      <button id="fb-continue" class="inline-flex items-center gap-2 bg-koi-500 hover:bg-koi-600 text-pond-900 text-[14px] font-semibold px-5 py-2.5 rounded-full transition shadow-[0_8px_22px_-6px_rgba(255,107,30,0.6)]">
+        See the scorecard
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+      </button>
+    </div>
+    </div><!-- /feedback-content -->
+  </section>
+
+  <!-- ============ STEP 7: SCORECARD ============ -->
+  <section data-step="scorecard">
+    <div class="text-center mb-6">
+      <p class="text-[11px] uppercase tracking-wider text-pond-700/60 font-bold">PITCH SCORECARD</p>
+      <h2 class="text-[28px] md:text-[32px] font-extrabold tracking-tight mt-1">Here's how it landed.</h2>
+    </div>
+
+    <!-- HERO SCORE CARD — hydrated from live coach scorecard -->
+    <div class="relative overflow-hidden rounded-3xl bg-gradient-to-br from-lily-500 via-lily-600 to-pond-700 text-white p-7 md:p-8 mb-4 shadow-[0_24px_60px_-25px_rgba(60,107,90,0.5)]">
+      <svg class="absolute -top-12 -right-12 w-72 h-72 opacity-[0.1] text-white pointer-events-none" viewBox="0 0 200 200" fill="none">
+        <circle cx="100" cy="100" r="20" fill="currentColor"/>
+        <circle cx="100" cy="100" r="50" stroke="currentColor" stroke-width="1.5"/>
+        <circle cx="100" cy="100" r="80" stroke="currentColor" stroke-width="1.5"/>
+        <circle cx="100" cy="100" r="110" stroke="currentColor" stroke-width="1.5"/>
+      </svg>
+      <div class="absolute bottom-0 right-0 text-[140px] opacity-[0.06] leading-none translate-y-4">🐠</div>
+
+      <div class="relative grid sm:grid-cols-[260px,1fr] gap-6 items-center">
+        <div class="text-center sm:text-left">
+          <p class="text-[10px] uppercase tracking-[0.2em] font-bold text-white/70">IDEA SCORE</p>
+          <div class="flex items-baseline justify-center sm:justify-start gap-1 mt-1">
+            <p id="hero-score" class="text-[88px] md:text-[104px] font-extrabold tracking-tighter leading-none">0</p>
+            <p class="text-[20px] font-bold text-white/60">/100</p>
+          </div>
+          <span id="hero-tag" class="inline-flex items-center gap-1.5 mt-3 px-3 py-1 rounded-full bg-white/15 backdrop-blur text-[12px] font-semibold">
+            <span class="text-base">⭐</span> <span id="hero-tag-text">—</span>
+          </span>
+        </div>
+        <div id="hero-rows" class="space-y-3"></div>
+      </div>
+    </div>
+
+    <!-- BAND SUMMARY (3 chips: strong / watch / critical counts from live scorecard) -->
+    <div id="band-summary" class="grid grid-cols-3 gap-3 mb-5"></div>
+
+    <!-- FULL CATEGORY BREAKDOWN -->
+    <div class="bg-white rounded-2xl card-shadow p-5 md:p-6 mb-5">
+      <div class="flex items-end justify-between mb-4">
+        <div>
+          <p class="text-[10px] uppercase tracking-wider text-pond-700/60 font-bold">Full breakdown</p>
+          <h3 class="text-[16px] font-extrabold tracking-tight">Idea Validator dimensions.</h3>
+        </div>
+        <div class="hidden sm:flex items-center gap-2.5 text-[10px]">
+          <span class="inline-flex items-center gap-1 text-lily-700"><span class="w-2 h-2 rounded-sm bg-lily-600"></span>Strong</span>
+          <span class="inline-flex items-center gap-1 text-pond-700"><span class="w-2 h-2 rounded-sm bg-lily-300"></span>Good</span>
+          <span class="inline-flex items-center gap-1 text-pond-700"><span class="w-2 h-2 rounded-sm bg-koi-400"></span>Watch</span>
+          <span class="inline-flex items-center gap-1 text-koi-700"><span class="w-2 h-2 rounded-sm bg-koi-600"></span>Critical</span>
+        </div>
+      </div>
+      <div id="scorecard-bars" class="space-y-3"></div>
+    </div>
+
+    <!-- WEAKEST AREA CALLOUT — pulled from coach.weakest -->
+    <div id="weakest-callout" class="hidden bg-gradient-to-br from-pond-900 to-[#031F1F] text-white rounded-2xl p-6 mb-5 relative overflow-hidden">
+      <svg class="absolute -bottom-8 -right-8 w-40 h-40 opacity-[0.08] text-white pointer-events-none" viewBox="0 0 200 200" fill="none">
+        <circle cx="100" cy="100" r="50" stroke="currentColor" stroke-width="1.5"/>
+        <circle cx="100" cy="100" r="80" stroke="currentColor" stroke-width="1.5"/>
+      </svg>
+      <div class="relative">
+        <div class="flex items-center gap-2 mb-3">
+          <span class="text-2xl">🎯</span>
+          <p class="text-[10px] uppercase tracking-wider font-bold text-white/60">Where to drill next</p>
+        </div>
+        <p id="weakest-title" class="text-[18px] font-extrabold mb-1">—</p>
+        <p id="weakest-quote" class="text-[13.5px] text-white/85 leading-snug">—</p>
+      </div>
+    </div>
+
+    <!-- CTA -->
+    <div class="flex justify-end">
+      <button id="score-continue" class="inline-flex items-center gap-2 bg-koi-500 hover:bg-koi-600 text-pond-900 text-[14px] font-semibold px-6 py-3 rounded-full transition shadow-[0_10px_28px_-8px_rgba(255,107,30,0.7)]">
+        Continue to Investor Q&amp;A
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+      </button>
+    </div>
+  </section>
+
+  <!-- ============ STEP 8: Q&A INTRO ============ -->
+  <section data-step="qa-intro">
+    <div class="bg-gradient-to-br from-pond-700 via-pond-900 to-[#031F1F] text-white rounded-3xl p-8 md:p-10 text-center relative overflow-hidden">
+      <svg class="absolute -top-10 -right-10 w-56 h-56 opacity-[0.08] text-white" viewBox="0 0 200 200" fill="none">
+        <circle cx="100" cy="100" r="20" fill="currentColor"/>
+        <circle cx="100" cy="100" r="50" stroke="currentColor" stroke-width="1.5"/>
+        <circle cx="100" cy="100" r="80" stroke="currentColor" stroke-width="1.5"/>
+      </svg>
+      <div class="relative">
+        <img data-investor-img data-investor-img="lg" alt="" class="w-16 h-16 mx-auto rounded-full object-cover ring-2 ring-white/20 mb-4" src="https://i.pravatar.cc/200?img=5"/>
+        <p class="text-[11px] uppercase tracking-wider text-white/60 font-bold mb-2">Investor Q&amp;A</p>
+        <h2 class="text-[26px] md:text-[30px] font-extrabold tracking-tight leading-tight"><span data-investor-name>Sarah</span> has three follow-up questions.</h2>
+        <p class="mt-3 text-[14px] text-white/75 max-w-md mx-auto">Based on what you actually said. Answer by voice — you'll get short feedback between questions.</p>
+        <button id="qa-start" class="mt-7 inline-flex items-center gap-2 bg-koi-500 hover:bg-koi-400 text-pond-900 text-[14px] font-semibold px-6 py-3 rounded-full transition shadow-[0_10px_28px_-8px_rgba(255,107,30,0.7)]">
+          Start Q&amp;A
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ STEP 9: Q&A QUESTION (recording) ============ -->
+  <section data-step="qa-question">
+    <div class="mb-4 flex items-center justify-between">
+      <p class="text-[11px] uppercase tracking-wider text-pond-700/60 font-bold">Question <span id="qa-num">1</span> of 3</p>
+      <div class="flex gap-1">
+        <span class="qa-dot w-2 h-2 rounded-full bg-pond-900" data-qa-dot="0"></span>
+        <span class="qa-dot w-2 h-2 rounded-full bg-pond-300/40" data-qa-dot="1"></span>
+        <span class="qa-dot w-2 h-2 rounded-full bg-pond-300/40" data-qa-dot="2"></span>
+      </div>
+    </div>
+
+    <div class="bg-white rounded-3xl card-shadow p-6 md:p-8">
+      <div class="flex items-start gap-3 mb-5">
+        <img data-investor-img alt="" class="w-10 h-10 rounded-full object-cover ring-1 ring-pond-100 shrink-0" src="https://i.pravatar.cc/200?img=5"/>
+        <div class="flex-1">
+          <p class="font-semibold text-[13px]" data-investor-name>Sarah Chen</p>
+          <p class="text-[11px] text-pond-700/60" data-investor-firm>Partner · Vanguard Capital</p>
+        </div>
+        <button id="qa-replay" class="text-[12px] text-pond-700/70 hover:text-pond-900 inline-flex items-center gap-1.5">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+          Play Question
+        </button>
+      </div>
+
+      <blockquote id="qa-question-text" class="text-[18px] md:text-[20px] font-semibold text-pond-900 leading-snug border-l-3 border-koi-500 pl-4 mb-6"></blockquote>
+
+      <!-- Answer recorder -->
+      <div class="bg-cream-100 rounded-2xl p-5 text-center">
+        <p class="text-[11px] uppercase tracking-wider text-pond-700/60 font-bold mb-2">Your answer</p>
+        <p id="qa-timer" class="text-[36px] font-extrabold tabular-nums tracking-tight">0:00</p>
+        <p class="text-[11px] text-pond-700/60">Aim for 30–60 seconds</p>
+
+        <div id="qa-vis" class="mt-4 flex items-end justify-center gap-1 h-8"></div>
+
+        <div class="mt-4 flex flex-wrap justify-center gap-2">
+          <button id="qa-rec-start" class="inline-flex items-center gap-2 bg-koi-500 hover:bg-koi-600 text-pond-900 text-[14px] font-semibold px-5 py-2.5 rounded-full transition shadow-[0_8px_22px_-6px_rgba(255,107,30,0.6)]">
+            <span class="w-2.5 h-2.5 rounded-full bg-white"></span>
+            Start Answer
+          </button>
+          <button id="qa-rec-stop" hidden class="inline-flex items-center gap-2 bg-pond-900 hover:bg-pond-700 text-white text-[14px] font-semibold px-5 py-2.5 rounded-full transition">Submit Answer</button>
+          <button id="qa-rec-redo" hidden class="text-[12px] text-pond-700/70 hover:text-pond-900 px-3">Record again</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ STEP 10: Q&A ANSWER FEEDBACK ============ -->
+  <section data-step="qa-feedback">
+    <div class="mb-4 flex items-center justify-between">
+      <p class="text-[11px] uppercase tracking-wider text-pond-700/60 font-bold">Answer <span id="qa-fb-num">1</span> of 3 — quick read</p>
+      <div class="flex gap-1" id="qa-fb-dots"></div>
+    </div>
+
+    <div class="bg-white rounded-2xl card-shadow p-6">
+      <p class="text-[11px] uppercase tracking-wider text-pond-700/60 font-bold mb-1">Question</p>
+      <p id="qa-fb-question" class="text-[14px] font-semibold mb-4 text-pond-900"></p>
+
+      <p class="text-[11px] uppercase tracking-wider text-pond-700/60 font-bold mb-1">Your answer (transcript)</p>
+      <textarea id="qa-fb-answer" class="w-full min-h-[80px] p-3 bg-cream-50 rounded-xl text-[13.5px] leading-relaxed focus:outline-none focus:ring-2 focus:ring-pond-300 resize-y" spellcheck="false"></textarea>
+
+      <div class="mt-4 grid grid-cols-2 sm:grid-cols-5 gap-2">
+        <div class="bg-cream-100 rounded-lg p-2.5 text-center">
+          <p class="text-[10px] uppercase tracking-wider text-pond-700/60 font-bold">Directness</p>
+          <p class="text-[18px] font-extrabold mt-0.5" id="ev-direct">8</p>
+        </div>
+        <div class="bg-cream-100 rounded-lg p-2.5 text-center">
+          <p class="text-[10px] uppercase tracking-wider text-pond-700/60 font-bold">Evidence</p>
+          <p class="text-[18px] font-extrabold mt-0.5" id="ev-evid">5</p>
+        </div>
+        <div class="bg-cream-100 rounded-lg p-2.5 text-center">
+          <p class="text-[10px] uppercase tracking-wider text-pond-700/60 font-bold">Clarity</p>
+          <p class="text-[18px] font-extrabold mt-0.5" id="ev-clarity">7</p>
+        </div>
+        <div class="bg-cream-100 rounded-lg p-2.5 text-center">
+          <p class="text-[10px] uppercase tracking-wider text-pond-700/60 font-bold">Confidence</p>
+          <p class="text-[18px] font-extrabold mt-0.5" id="ev-conf">7</p>
+        </div>
+        <div class="bg-cream-100 rounded-lg p-2.5 text-center">
+          <p class="text-[10px] uppercase tracking-wider text-pond-700/60 font-bold">Persuasive</p>
+          <p class="text-[18px] font-extrabold mt-0.5" id="ev-pers">6</p>
+        </div>
+      </div>
+
+      <div id="qa-fb-note" class="mt-4 rounded-lg bg-cream-200 border border-pond-100/60 px-3 py-2 text-[12.5px] text-pond-900"></div>
+
+      <div class="mt-5 flex justify-end">
+        <button id="qa-fb-next" class="inline-flex items-center gap-2 bg-koi-500 hover:bg-koi-600 text-pond-900 text-[14px] font-semibold px-5 py-2.5 rounded-full transition shadow-[0_8px_22px_-6px_rgba(255,107,30,0.6)]">
+          <span id="qa-fb-cta">Next Question</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ STEP 11: FINAL REPORT ============ -->
+  <section data-step="report">
+    <div class="text-center mb-6">
+      <p class="text-[11px] uppercase tracking-wider text-pond-700/60 font-bold">Final Session Report</p>
+      <h2 class="text-[28px] md:text-[32px] font-extrabold tracking-tight mt-1">
+        Here's how it went<span data-user-firstname-suffix="">.</span>
+      </h2>
+      <p id="report-meta" class="mt-2 text-[12.5px] text-pond-700/65">—</p>
+    </div>
+
+    <div class="grid sm:grid-cols-3 gap-4 mb-5">
+      <div class="bg-gradient-to-br from-lily-50 to-lily-100/60 rounded-2xl ring-1 ring-lily-100 p-5 text-center">
+        <p class="text-[10px] uppercase tracking-wider font-bold text-lily-700">Final score</p>
+        <p class="text-[44px] font-extrabold tracking-tight leading-none mt-1"><span id="rep-total">—</span><span class="text-[14px] font-semibold text-pond-700/60">/100</span></p>
+        <p id="rep-total-meta" class="text-[11px] text-lily-700 font-semibold mt-1">&nbsp;</p>
+      </div>
+      <div class="bg-white rounded-2xl card-shadow p-5 text-center">
+        <p class="text-[10px] uppercase tracking-wider font-bold text-pond-700/60">Idea</p>
+        <p class="text-[44px] font-extrabold tracking-tight leading-none mt-1" id="rep-pitch">—</p>
+      </div>
+      <div class="bg-white rounded-2xl card-shadow p-5 text-center">
+        <p class="text-[10px] uppercase tracking-wider font-bold text-pond-700/60">Q&amp;A</p>
+        <p class="text-[44px] font-extrabold tracking-tight leading-none mt-1" id="rep-qa">—</p>
+      </div>
+    </div>
+
+    <!-- Idea verdict echo (from coach) -->
+    <div id="rep-verdict-card" class="hidden bg-white rounded-2xl card-shadow p-5 mb-5">
+      <div class="flex items-start justify-between gap-4">
+        <div class="min-w-0">
+          <p class="text-[10px] uppercase tracking-wider text-pond-700/60 font-bold">The Shark's verdict</p>
+          <p id="rep-verdict-label" class="text-[24px] font-extrabold tracking-tight leading-tight mt-1">—</p>
+        </div>
+        <span id="rep-verdict-badge" class="shrink-0 inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-full bg-pond-100 text-pond-700"></span>
+      </div>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-5 mb-5">
+      <div class="bg-white rounded-2xl card-shadow p-5">
+        <p class="text-[10px] uppercase tracking-wider text-pond-700/60 font-bold mb-2">Strongest dimensions</p>
+        <ul id="rep-strong-list" class="space-y-1.5 text-[13px]">
+          <li class="text-pond-700/50">—</li>
+        </ul>
+      </div>
+      <div class="bg-white rounded-2xl card-shadow p-5">
+        <p class="text-[10px] uppercase tracking-wider text-pond-700/60 font-bold mb-2">Weakest dimensions</p>
+        <ul id="rep-weak-list" class="space-y-1.5 text-[13px]">
+          <li class="text-pond-700/50">—</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="bg-white rounded-2xl card-shadow p-5 mb-5">
+      <p class="text-[10px] uppercase tracking-wider text-pond-700/60 font-bold mb-3">Investor follow-ups · how you handled them</p>
+      <div id="rep-qa-list" class="space-y-2.5 text-[13px]">
+        <p class="text-pond-700/50">—</p>
+      </div>
+    </div>
+
+    <!-- CTAs -->
+    <div class="flex flex-wrap gap-2 justify-end">
+      <a href="./dashboard.html" class="inline-flex items-center gap-2 text-[13px] font-medium text-pond-700/70 hover:text-pond-900 px-4 py-2.5">Back to Dashboard</a>
+      <button id="save-report" class="inline-flex items-center gap-2 bg-cream-200 hover:bg-pond-100 text-pond-900 text-[14px] font-semibold px-5 py-2.5 rounded-full transition">Save Report</button>
+      <button id="report-improved" class="inline-flex items-center gap-2 bg-pond-900 hover:bg-pond-700 text-white text-[14px] font-semibold px-5 py-2.5 rounded-full transition">Practice Improved Version</button>
+      <button id="report-again" class="inline-flex items-center gap-2 bg-koi-500 hover:bg-koi-600 text-pond-900 text-[14px] font-semibold px-5 py-2.5 rounded-full transition shadow-[0_8px_22px_-6px_rgba(255,107,30,0.6)]">
+        Practice Again
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+      </button>
+    </div>
+  </section>
+
+  <!-- ============ STEP 12: IMPROVED PITCH ============ -->
+  <section data-step="improved">
+    <div class="mb-5">
+      <p class="text-[11px] uppercase tracking-wider text-pond-700/60 font-bold">Improved Pitch</p>
+      <h2 class="text-[26px] font-extrabold tracking-tight mt-1">Rebuild the pitch — then run it again.</h2>
+      <p class="text-[13px] text-pond-700/70 mt-1">A 2-minute structure plus the three changes The Shark told you to make. Stay in your own voice.</p>
+    </div>
+
+    <div class="bg-white rounded-2xl card-shadow p-6 mb-4">
+      <p class="text-[11px] uppercase tracking-wider text-pond-700/60 font-bold mb-3">2-minute structure</p>
+      <ol class="space-y-2.5 text-[13.5px]">
+        <li class="flex gap-3"><span class="shrink-0 w-5 h-5 rounded-full bg-pond-900 text-white text-[10px] font-bold flex items-center justify-center">1</span><div><strong>Opening</strong> — one sentence about who you are and what you're building. 10s.</div></li>
+        <li class="flex gap-3"><span class="shrink-0 w-5 h-5 rounded-full bg-pond-900 text-white text-[10px] font-bold flex items-center justify-center">2</span><div><strong>Problem</strong> — the pain in the customer's words. 15s.</div></li>
+        <li class="flex gap-3"><span class="shrink-0 w-5 h-5 rounded-full bg-pond-900 text-white text-[10px] font-bold flex items-center justify-center">3</span><div><strong>Customer</strong> — name the segment and one specific behavior they do today. 15s.</div></li>
+        <li class="flex gap-3"><span class="shrink-0 w-5 h-5 rounded-full bg-pond-900 text-white text-[10px] font-bold flex items-center justify-center">4</span><div><strong>Solution</strong> — your wedge in one breath. 20s.</div></li>
+        <li class="flex gap-3"><span class="shrink-0 w-5 h-5 rounded-full bg-pond-900 text-white text-[10px] font-bold flex items-center justify-center">5</span><div><strong>Proof</strong> — quote a real number with the denominator. "Across N customers, X result in Y days." 15s.</div></li>
+        <li class="flex gap-3"><span class="shrink-0 w-5 h-5 rounded-full bg-pond-900 text-white text-[10px] font-bold flex items-center justify-center">6</span><div><strong>Business model</strong> — subscription tier, ACV, retention if you have it. 15s.</div></li>
+        <li class="flex gap-3"><span class="shrink-0 w-5 h-5 rounded-full bg-pond-900 text-white text-[10px] font-bold flex items-center justify-center">7</span><div><strong>Market</strong> — bottom-up: customers × ARPU × penetration. 10s.</div></li>
+        <li class="flex gap-3"><span class="shrink-0 w-5 h-5 rounded-full bg-pond-900 text-white text-[10px] font-bold flex items-center justify-center">8</span><div><strong>Ask</strong> — round size, committed amount, what closes the round, by when. 20s.</div></li>
+      </ol>
+    </div>
+
+    <div class="grid sm:grid-cols-2 gap-4 mb-5">
+      <div class="bg-white rounded-2xl card-shadow p-5">
+        <p class="text-[10px] uppercase tracking-wider text-lily-700 font-bold mb-2">The 3 changes The Shark gave you</p>
+        <ol id="improved-stronger" class="space-y-1.5 text-[13px] list-decimal list-inside">
+          <li class="text-pond-700/50">—</li>
+        </ol>
+      </div>
+      <div class="bg-white rounded-2xl card-shadow p-5">
+        <p class="text-[10px] uppercase tracking-wider text-koi-700 font-bold mb-2">Weakest dimension to drill</p>
+        <p id="improved-weak" class="text-[14px] font-extrabold mt-1">—</p>
+        <p id="improved-weak-quote" class="text-[12.5px] text-pond-700/70 leading-snug mt-1">—</p>
+      </div>
+    </div>
+
+    <div class="flex flex-wrap gap-2 justify-end">
+      <a href="./dashboard.html" class="inline-flex items-center text-[13px] font-medium text-pond-700/70 hover:text-pond-900 px-4 py-2.5">Back to Dashboard</a>
+      <button id="improved-start" class="inline-flex items-center gap-2 bg-koi-500 hover:bg-koi-600 text-pond-900 text-[14px] font-semibold px-6 py-3 rounded-full transition shadow-[0_8px_22px_-6px_rgba(255,107,30,0.6)]">
+        Practice Improved Version
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+      </button>
+    </div>
+  </section>
+
+</main>
+
+<script>
+/* =========================================
+ * State machine for the practice session
+ * ========================================= */
+
+const STEPS = ['mic','record','processing','transcript','analyzing','feedback','scorecard','qa-intro','qa-question','qa-feedback','report','improved'];
+const STEP_LABELS = {
+  'mic':'Mic check','record':'Recording','processing':'Processing','transcript':'Transcript',
+  'analyzing':'Analyzing','feedback':'Coach feedback','scorecard':'Scorecard',
+  'qa-intro':'Q&A intro','qa-question':'Q&A','qa-feedback':'Q&A review','report':'Report','improved':'Improved pitch'
+};
+
+// Resolve scenario from URL — accept either ?id= or ?scenario= for safety.
+const SCENARIO_ID = (() => {
+  const p = new URLSearchParams(location.search);
+  return p.get('id') || p.get('scenario') || 'free-pitch';
+})();
+
+const state = {
+  step: 'mic',
+  qaIndex: 0,
+  mediaStream: null,
+  recorder: null,
+  audioCtx: null,
+  analyser: null,
+  recBlobs: [],
+  startedAt: 0, elapsedMs: 0, paused: false, rafId: null,
+  qaTimerId: null, qaStart: 0, qaElapsed: 0,
+  // ---- Persisted computed values (populated through the flow) ----
+  scenarioId:    SCENARIO_ID,
+  scenarioTitle: 'Free pitch',  // Replaced once scenarios:ready fires
+  scenario:      null,           // Full persona object — populated below
+  pitchScore:    null,
+  qaScore:       null,
+  totalScore:    null,
+  weakArea:      null,
+  presence:      null,
+  verdict:       null,
+  durationSec:   null,
+  pitchDurationMs: 120000, // user-selectable on the setup screen (2/3/4/5 min)
+  finalTranscript: '',
+  qaTurns:       [],   // [{ position, question, answer, scores, note }]
+  qaTtsCache:    {},   // { [index]: blobUrl }  — Fish-voiced questions
+  qaRecognizer:  null,
+  qaCurrentTranscript: ''
+};
+
+// Expose state to the window so a paste of `koiPondState` from the console
+// shows the live coach + visual response — invaluable when feedback looks wrong.
+window.koiPondState = state;
+
+// Hydrate scenario data as soon as the module-import side loads it.
+// If imports fail (offline), we keep the safe Free-pitch default.
+function applyScenario() {
+  const lookup = window.koiPondScenarios?.getScenario;
+  if (!lookup) return;
+  const sc = lookup(SCENARIO_ID);
+  state.scenario      = sc;
+  state.scenarioTitle = sc.title;
+  // Repaint any persona-bound bits that mounted before scenarios resolved.
+  document.querySelectorAll('[data-investor-name]').forEach(el => el.textContent = sc.name);
+  document.querySelectorAll('[data-investor-firm]').forEach(el => el.textContent = sc.firm);
+  document.querySelectorAll('[data-investor-img]').forEach(el => {
+    el.src = window.koiPondScenarios.avatarUrl(sc, el.dataset.investorImg === 'lg' ? 200 : 100);
+    el.alt = sc.name;
+  });
+}
+if (window.koiPondScenarios) applyScenario();
+else window.addEventListener('scenarios:ready', applyScenario, { once: true });
+
+// Mutable so the live coach response can overwrite the scores while keeping the icons.
+// Idea Validator dimensions — match the SHARK_SYSTEM_PROMPT schema.
+let scorecard = [
+  { name:'Market',        icon:'⚔️', score:0 },  // competitors / saturation
+  { name:'Demand',        icon:'📣', score:0 },  // do people actually pay
+  { name:'Feasibility',   icon:'🛠️', score:0 },  // realistic scope
+  { name:'Monetization',  icon:'💰', score:0 },  // path to revenue
+  { name:'Interest',      icon:'✨', score:0 },  // compelling vs commoditized
+  { name:'Overall',       icon:'⭐', score:0 }
+];
+
+// Bands match the YC rubric in server.js SHARK_SYSTEM_PROMPT — keep in sync.
+//   90+   YC interview-ready    (would survive a Day-1 partner grilling)
+//   75-89 Strong                (fundable as-is at angel/pre-seed)
+//   60-74 Watch                 (one YC lens fails — investable after a fix)
+//   45-59 Weak                  (fails 2+ lenses; rewrite with 10 user calls)
+//   30-44 Critical              (fails 3+ lenses; unlikely to attract capital)
+//   0-29  Tarpit / wrapper      (not a startup — kill it)
+function scoreBand(score) {
+  if (score >= 90) return { label:'YC-ready', tag:'🏆', bar:'bg-lily-700', text:'text-lily-700', bg:'bg-lily-50' };
+  if (score >= 75) return { label:'Strong',   tag:'🔥', bar:'bg-lily-600', text:'text-lily-700', bg:'bg-lily-50' };
+  if (score >= 60) return { label:'Watch',    tag:'👀', bar:'bg-lily-300', text:'text-pond-700', bg:'bg-cream-200' };
+  if (score >= 45) return { label:'Weak',     tag:'⚠️', bar:'bg-koi-400',  text:'text-koi-700',  bg:'bg-koi-50' };
+  if (score >= 30) return { label:'Critical', tag:'🚨', bar:'bg-koi-600',  text:'text-koi-700',  bg:'bg-koi-50' };
+  return                  { label:'Tarpit',   tag:'☠️', bar:'bg-pond-900', text:'text-white',    bg:'bg-pond-900' };
+}
+
+// Investor Q&A questions — populated at runtime by /api/qa-questions
+// based on the actual pitch transcript. Falls back to a generic-but-tough
+// trio if the API call fails so the user never sees an empty Q&A.
+const QA_FALLBACK = [
+  { q: 'Walk me through how you get the first 100 customers. Distribution is where most of these die.' },
+  { q: 'What stops three other founders from launching the same thing next quarter?' },
+  { q: 'Why now? Why has no one with more capital and distribution already done this?' }
+];
+let qaQuestions = QA_FALLBACK.slice();
+
+/* ------- Step routing ------- */
+function go(step) {
+  // Kill any audio still playing from the previous step BEFORE we mount the new
+  // one. Previously, hitting Next Question while the coach script or the prior
+  // question's TTS was mid-sentence let the audio bleed onto the next page.
+  if (typeof stopAllAudio === 'function') {
+    try { stopAllAudio(); } catch (e) { console.warn('[go] stopAllAudio:', e); }
+  }
+
+  state.step = step;
+  document.querySelectorAll('[data-step]').forEach(el => el.classList.toggle('active', el.dataset.step === step));
+  document.getElementById('step-indicator').textContent = STEP_LABELS[step] || '';
+  window.scrollTo({ top:0, behavior:'smooth' });
+
+  if (step === 'mic')         setupMic();
+  if (step === 'record')      setupRecord();
+  if (step === 'processing')  runProcessing();
+  if (step === 'transcript')  setupTranscript();
+  if (step === 'analyzing')   runAnalyzing();
+  if (step === 'feedback')    setupFeedback();
+  if (step === 'scorecard')   setupScorecard();
+  if (step === 'qa-question') setupQa();
+  if (step === 'qa-feedback') setupQaFeedback();
+  if (step === 'report')      setupReport();
+  if (step === 'improved')    setupImproved();
+}
+
+function setupImproved() {
+  const list = document.getElementById('improved-stronger');
+  if (list) {
+    const items = (state.coachStronger || []).slice(0, 3);
+    list.innerHTML = items.length
+      ? items.map(s => `<li class="text-pond-900">${escapeHtml(String(s))}</li>`).join('')
+      : '<li class="text-pond-700/50">No specific changes returned — re-run the pitch to get fresh ones.</li>';
+  }
+  const wk = state.coachWeakest;
+  document.getElementById('improved-weak').textContent       = wk?.title || state.weakArea || 'No weakest dimension flagged.';
+  document.getElementById('improved-weak-quote').textContent = wk?.quote || '';
+}
+
+document.getElementById('exit-btn').addEventListener('click', () => {
+  if (confirm('Exit the session? Your progress will be lost.')) location.href = './dashboard.html';
+});
+
+/* ============ SETUP: mic + camera + screen ============ */
+const PERM_STATUS = {
+  mic:    { granted: false },
+  camera: { granted: false },
+  screen: { granted: false }
+};
+
+function setupMic() {
+  // Reset permission UI when entering the step fresh
+  ['mic','camera','screen'].forEach(k => updatePermUi(k, PERM_STATUS[k].granted));
+  updateBeginEnabled();
+}
+
+function updatePermUi(key, granted) {
+  PERM_STATUS[key].granted = granted;
+  const statusEl = document.querySelector(`[data-status="${key}"]`);
+  const allowBtn = document.querySelector(`[data-allow="${key}"]`);
+  // Only mic uses "Not granted" copy (it's required); camera/screen are "Skipped" by default
+  const skippedLabel = key === 'mic' ? '○ Not granted' : '○ Skipped';
+  if (granted) {
+    statusEl.textContent = '● Granted';
+    statusEl.className = 'text-[10px] font-bold uppercase tracking-wider text-lily-600';
+    allowBtn.textContent = 'Re-allow';
+    allowBtn.classList.remove('bg-koi-500', 'hover:bg-koi-600');
+    allowBtn.classList.add('bg-pond-100', 'hover:bg-pond-300', 'text-pond-700');
+  } else {
+    statusEl.textContent = skippedLabel;
+    statusEl.className = 'text-[10px] font-bold uppercase tracking-wider text-pond-700/40';
+    allowBtn.textContent = 'Allow';
+    allowBtn.classList.add('bg-koi-500', 'hover:bg-koi-600');
+    allowBtn.classList.remove('bg-pond-100', 'hover:bg-pond-300', 'text-pond-700');
+  }
+}
+
+function updateBeginEnabled() {
+  const micOk    = PERM_STATUS.mic.granted;
+  const cameraOk = PERM_STATUS.camera.granted;
+  const screenOk = PERM_STATUS.screen.granted;
+  const btn  = document.getElementById('setup-begin');
+  const hint = document.getElementById('setup-hint');
+  btn.disabled = !micOk;
+  if (!micOk) {
+    hint.textContent = 'Allow your microphone to start. Camera + screen are optional but unlock more feedback.';
+  } else if (cameraOk && screenOk) {
+    hint.textContent = 'All set. The Shark will grade voice, body language, and slide pacing.';
+  } else if (cameraOk) {
+    hint.textContent = 'Mic + camera ready. Body-language read on. Slide-pacing read off (no screen share).';
+  } else if (screenOk) {
+    hint.textContent = 'Mic + screen ready. Slide-pacing read on. Body-language read off (no camera).';
+  } else {
+    hint.textContent = 'Audio-only mode — only the words will be graded. Add camera or screen for more.';
+  }
+}
+
+function showPermHelp() {
+  document.getElementById('perm-help').hidden = false;
+}
+
+async function requestMic() {
+  try {
+    if (state.mediaStream) state.mediaStream.getTracks().forEach(t => t.stop());
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    state.mediaStream = stream;
+    updatePermUi('mic', true);
+    updateBeginEnabled();
+  } catch (err) {
+    console.warn('[mic] denied:', err);
+    updatePermUi('mic', false);
+    showPermHelp();
+  }
+}
+
+async function requestCamera() {
+  try {
+    if (state.camStream) state.camStream.getTracks().forEach(t => t.stop());
+    // request video only — audio comes from the mic stream so we don't double-grab the mic
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 24 } },
+      audio: false
+    });
+    state.camStream = stream;
+    updatePermUi('camera', true);
+    updateBeginEnabled();
+  } catch (err) {
+    console.warn('[camera] denied:', err);
+    updatePermUi('camera', false);
+    showPermHelp();
+  }
+}
+
+async function requestScreen() {
+  try {
+    if (state.screenStream) state.screenStream.getTracks().forEach(t => t.stop());
+    const stream = await navigator.mediaDevices.getDisplayMedia({
+      video: { frameRate: 12 },
+      audio: false
+    });
+    state.screenStream = stream;
+    // If the user stops sharing via the browser chrome, flip the permission off
+    stream.getVideoTracks()[0]?.addEventListener('ended', () => {
+      state.screenStream = null;
+      updatePermUi('screen', false);
+      updateBeginEnabled();
+    });
+    updatePermUi('screen', true);
+    updateBeginEnabled();
+  } catch (err) {
+    console.warn('[screen] denied:', err);
+    updatePermUi('screen', false);
+    showPermHelp();
+  }
+}
+
+document.querySelector('[data-allow="mic"]').addEventListener('click', requestMic);
+document.querySelector('[data-allow="camera"]').addEventListener('click', requestCamera);
+document.querySelector('[data-allow="screen"]').addEventListener('click', requestScreen);
+document.getElementById('setup-begin').addEventListener('click', () => go('record'));
+
+// Pitch-length selector — segmented control (2 / 3 / 4 / 5 min)
+document.querySelectorAll('[data-pitch-len-group] [data-pitch-len]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const sec = parseInt(btn.dataset.pitchLen, 10);
+    if (!Number.isFinite(sec)) return;
+    state.pitchDurationMs = sec * 1000;
+    document.querySelectorAll('[data-pitch-len-group] [data-pitch-len]').forEach(b => {
+      const isActive = b === btn;
+      b.classList.toggle('active', isActive);
+      b.classList.toggle('border-pond-900', isActive);
+      b.classList.toggle('bg-pond-900',     isActive);
+      b.classList.toggle('text-white',      isActive);
+      b.classList.toggle('border-cream-200', !isActive);
+      b.classList.toggle('bg-white',         !isActive);
+      b.classList.toggle('text-pond-900',    !isActive);
+    });
+  });
+});
+
+/* ============ DECK UPLOAD + SLIDE RENDER ============ */
+state.deck = null;
+
+function deckErr(msg) {
+  const el = document.getElementById('deck-error');
+  el.textContent = msg;
+  el.hidden = false;
+  setTimeout(() => { el.hidden = true; }, 5500);
+}
+
+async function handleDeckFile(file) {
+  if (!file) return;
+  if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+    deckErr('PDF only — export your PPTX as PDF and try again.');
+    return;
+  }
+  if (file.size > 20 * 1024 * 1024) {
+    deckErr(`File is ${(file.size/1024/1024).toFixed(1)} MB. Keep it under 20 MB.`);
+    return;
+  }
+  if (!window.pdfjsLib) {
+    await new Promise(r => window.addEventListener('pdfjs:ready', r, { once: true }));
+  }
+  try {
+    const buf = await file.arrayBuffer();
+    const pdf = await window.pdfjsLib.getDocument({ data: buf }).promise;
+    state.deck = { pdf, fileName: file.name, numPages: pdf.numPages, current: 1, thumbnails: [] };
+
+    // Cover thumbnail on the upload card
+    await renderToCanvas(pdf, 1, document.getElementById('deck-thumb'), 0.4);
+
+    // Mini thumbnail strip (cap at 12)
+    const strip = document.getElementById('deck-thumbs');
+    strip.innerHTML = '';
+    const max = Math.min(pdf.numPages, 12);
+    for (let i = 1; i <= max; i++) {
+      const wrap = document.createElement('div');
+      wrap.className = 'aspect-[4/3] rounded-md overflow-hidden ring-1 ring-cream-50/40 bg-pond-900 flex items-center justify-center';
+      const c = document.createElement('canvas');
+      c.className = 'max-w-full max-h-full';
+      wrap.appendChild(c);
+      strip.appendChild(wrap);
+      // render in parallel — non-blocking
+      renderToCanvas(pdf, i, c, 0.18).then(b64 => {
+        state.deck.thumbnails[i - 1] = b64;
+      });
+    }
+    if (pdf.numPages > 12) {
+      const more = document.createElement('div');
+      more.className = 'aspect-[4/3] rounded-md bg-cream-200 flex items-center justify-center text-[10px] font-bold text-pond-700/70';
+      more.textContent = `+${pdf.numPages - 12}`;
+      strip.appendChild(more);
+    }
+
+    document.getElementById('deck-drop').hidden = true;
+    document.getElementById('deck-loaded').hidden = false;
+    document.getElementById('deck-filename').textContent = file.name;
+    document.getElementById('deck-meta').textContent = `${pdf.numPages} slide${pdf.numPages === 1 ? '' : 's'} · ${(file.size/1024/1024).toFixed(1)} MB`;
+  } catch (err) {
+    console.error('[deck] load failed:', err);
+    deckErr('Couldn\'t read that PDF. Try a different file.');
+  }
+}
+
+async function renderToCanvas(pdf, pageNum, canvas, scale = 1) {
+  const page = await pdf.getPage(pageNum);
+  const viewport = page.getViewport({ scale });
+  canvas.width  = Math.round(viewport.width);
+  canvas.height = Math.round(viewport.height);
+  await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+  try { return canvas.toDataURL('image/jpeg', 0.7).split(',')[1]; } catch { return null; }
+}
+
+async function renderMainSlide(num) {
+  if (!state.deck) return;
+  const canvas = document.getElementById('slide-canvas');
+  if (!canvas) return;
+  // Render at a generous scale so the canvas looks crisp at any container size
+  await renderToCanvas(state.deck.pdf, num, canvas, 1.6);
+  document.getElementById('slide-num').textContent  = num;
+  document.getElementById('slide-count').textContent = state.deck.numPages;
+  const pct = state.deck.numPages > 1 ? ((num - 1) / (state.deck.numPages - 1)) * 100 : 100;
+  document.getElementById('slide-progress').style.width = pct + '%';
+  document.getElementById('slide-prev').disabled = num <= 1;
+  document.getElementById('slide-next').disabled = num >= state.deck.numPages;
+  // Track timing so we can correlate against the screen recording later
+  state.deck.timings = state.deck.timings || [];
+  state.deck.timings.push({ page: num, t: Date.now() - (state.startedAt || Date.now()) });
+}
+
+function nextSlide() { if (state.deck && state.deck.current < state.deck.numPages) { state.deck.current++; renderMainSlide(state.deck.current); } }
+function prevSlide() { if (state.deck && state.deck.current > 1) { state.deck.current--; renderMainSlide(state.deck.current); } }
+
+// Upload wiring
+const deckInput = document.getElementById('deck-input');
+const deckDrop  = document.getElementById('deck-drop');
+deckInput.addEventListener('change', e => handleDeckFile(e.target.files?.[0]));
+deckDrop.addEventListener('dragover', e => { e.preventDefault(); deckDrop.classList.add('border-koi-500','bg-koi-50/40'); });
+deckDrop.addEventListener('dragleave', () => deckDrop.classList.remove('border-koi-500','bg-koi-50/40'));
+deckDrop.addEventListener('drop', e => {
+  e.preventDefault();
+  deckDrop.classList.remove('border-koi-500','bg-koi-50/40');
+  handleDeckFile(e.dataTransfer.files?.[0]);
+});
+document.getElementById('deck-remove').addEventListener('click', () => {
+  state.deck = null;
+  document.getElementById('deck-drop').hidden = false;
+  document.getElementById('deck-loaded').hidden = true;
+  document.getElementById('deck-input').value = '';
+});
+document.getElementById('slide-prev').addEventListener('click', prevSlide);
+document.getElementById('slide-next').addEventListener('click', nextSlide);
+
+// Arrow-key navigation — only when we're on the record step with a deck loaded
+document.addEventListener('keydown', e => {
+  if (state.step !== 'record' || !state.deck) return;
+  if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+  if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') { e.preventDefault(); nextSlide(); }
+  if (e.key === 'ArrowLeft'  || e.key === 'PageUp')                    { e.preventDefault(); prevSlide(); }
+});
+
+/* ============ LIVE PITCH ============ */
+function setupRecord() {
+  const vis = document.getElementById('record-vis');
+  vis.innerHTML = '';
+  for (let i = 0; i < 48; i++) {
+    const b = document.createElement('span');
+    b.className = 'vis-bar w-1.5 bg-white/15 rounded-sm';
+    b.style.height = '4px';
+    vis.appendChild(b);
+  }
+
+  // Initial countdown shows the chosen length (default 2:00)
+  const totalSec = Math.floor((state.pitchDurationMs || 120000) / 1000);
+  const initM = Math.floor(totalSec / 60), initS = totalSec % 60;
+  document.getElementById('timer-display').textContent = `${initM}:${String(initS).padStart(2,'0')}`;
+  document.getElementById('timer-bar').style.width = '0%';
+  document.getElementById('live-status').textContent = 'READY';
+  document.getElementById('live-dot').className = 'w-1.5 h-1.5 rounded-full bg-white/40';
+  document.getElementById('live-pill').className = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/10 text-white/80 text-[10px] font-bold tracking-wider';
+  document.getElementById('investor-mood').textContent = `${state.scenario?.firm || 'Partner · Vanguard Capital'} · Listening`;
+
+  document.getElementById('pitch-start').hidden = false;
+  document.getElementById('pitch-end').hidden = true;
+  document.getElementById('pitch-end').disabled = true;
+  document.getElementById('pitch-end-label').textContent = 'End Pitch (30s minimum)';
+  document.getElementById('live-transcript').innerHTML = '<span class="text-pond-700/40 italic">Your words will appear here as you speak…</span>';
+  document.getElementById('word-count').textContent = '0 words';
+
+  // ---- Stage selection: deck-on shows slide viewer, deck-off shows cam tile ----
+  const wrap   = document.getElementById('cam-preview-wrap');
+  const camEl  = document.getElementById('cam-preview');
+  const camFb  = document.getElementById('cam-fallback');
+  const stage  = document.getElementById('slide-stage');
+  const slideCam = document.getElementById('slide-cam');
+
+  if (state.deck) {
+    // Slide-led layout
+    if (stage) stage.hidden = false;
+    if (wrap)  wrap.classList.add('hidden');
+    // Reset to slide 1 and render
+    state.deck.current = 1;
+    state.deck.timings = [];
+    renderMainSlide(1);
+    // Mirror cam into PIP
+    if (slideCam && state.camStream) {
+      try { slideCam.srcObject = state.camStream; slideCam.play?.().catch(() => {}); }
+      catch (e) { console.warn('[slide-cam] attach failed:', e); }
+    }
+  } else {
+    // Camera-led layout (no deck)
+    if (stage) stage.hidden = true;
+    if (wrap)  wrap.classList.remove('hidden');
+    if (state.camStream && camEl) {
+      try {
+        camEl.srcObject = state.camStream;
+        camEl.play?.().catch(() => {});
+        camFb?.classList.add('hidden');
+      } catch (e) { console.warn('[cam-preview] attach failed:', e); }
+    } else {
+      camFb?.classList.remove('hidden');
+    }
+  }
+
+  state.elapsedMs = 0;
+  state.recBlobs = [];
+  state.liveFinal = '';
+  state.liveInterim = '';
+  state.recognition = null;
+
+  // Wire analyser for the visualiser
+  if (state.mediaStream) {
+    try { state.audioCtx?.close(); } catch (e) {}
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const src = ctx.createMediaStreamSource(state.mediaStream);
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 128;
+    src.connect(analyser);
+    state.audioCtx = ctx;
+    state.analyser = analyser;
+    state.visData = new Uint8Array(analyser.frequencyBinCount);
+  }
+}
+
+document.getElementById('pitch-start').addEventListener('click', startLivePitch);
+document.getElementById('pitch-end').addEventListener('click', () => endLivePitch(false));
+
+function setTranscribeStatus(label, color) {
+  const dot = document.getElementById('transcribe-dot');
+  const lbl = document.getElementById('transcribe-label');
+  if (!dot || !lbl) return;
+  lbl.textContent = label;
+  const colorMap = {
+    idle:   ['bg-pond-300', 'text-pond-700/50'],
+    live:   ['bg-koi-500 animate-pulse', 'text-koi-700'],
+    warn:   ['bg-amber-500', 'text-amber-700'],
+    error:  ['bg-koi-500', 'text-koi-700'],
+    off:    ['bg-pond-300', 'text-pond-700/40']
+  };
+  const [dotCls, lblCls] = colorMap[color] || colorMap.idle;
+  dot.className = 'w-1.5 h-1.5 rounded-full ' + dotCls;
+  document.getElementById('transcribe-status').className =
+    'inline-flex items-center gap-1.5 text-[10px] font-semibold ' + lblCls;
+}
+
+function startLivePitch() {
+  if (!state.mediaStream) { go('mic'); return; }
+
+  // Flip UI immediately
+  state.startedAt = Date.now();
+  state.pitchEnded = false;
+  document.getElementById('pitch-start').hidden = true;
+  document.getElementById('pitch-end').hidden = false;
+  document.getElementById('live-status').textContent = 'LIVE';
+  document.getElementById('live-dot').className = 'w-1.5 h-1.5 rounded-full bg-koi-500 animate-pulse';
+  document.getElementById('live-pill').className = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-koi-500/20 text-koi-300 text-[10px] font-bold tracking-wider';
+  document.getElementById('investor-mood').textContent = `${state.scenario?.firm || 'Partner · Vanguard Capital'} · Listening intently`;
+  setTranscribeStatus('Starting…', 'idle');
+
+  // Visually prompt the user that we're listening, before words arrive
+  document.getElementById('live-transcript').innerHTML =
+    '<span class="inline-flex items-center gap-2 text-pond-700/70"><span class="inline-flex w-2 h-2 rounded-full bg-koi-500 animate-pulse"></span>Listening… start talking, your words will appear here.</span>';
+
+  tickLive();
+
+  // Live transcription FIRST — this is the user-visible feature
+  startLiveTranscription();
+
+  // Recorders start after a tick so they can't race the speech API
+  setTimeout(() => {
+    if (state.pitchEnded) return;
+
+    // 1) Audio recorder (existing — keeps live transcript fallback intact)
+    try {
+      state.recorder = new MediaRecorder(state.mediaStream);
+      state.recorder.ondataavailable = e => { if (e.data.size) state.recBlobs.push(e.data); };
+      state.recorder.start(1000);
+      console.log('[REC] audio MediaRecorder started');
+    } catch (e) {
+      console.warn('[REC] audio MediaRecorder unavailable:', e);
+    }
+
+    // 2) Camera recorder — VIDEO ONLY (audio mux failed silently in some browsers
+    //    and produced no blob). Gemini reads body language fine from silent video;
+    //    audio analysis lives on the transcript side.
+    state.camChunks = [];
+    state.camRecorderError = null;
+    if (state.camStream) {
+      try {
+        const videoOnly = new MediaStream(state.camStream.getVideoTracks());
+        state.camRecorder = new MediaRecorder(videoOnly, {
+          mimeType: pickMime(['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm']),
+          videoBitsPerSecond: 500_000
+        });
+        state.camRecorder.ondataavailable = e => { if (e.data.size) state.camChunks.push(e.data); };
+        state.camRecorder.onerror = e => {
+          state.camRecorderError = e.error?.message || 'recorder error';
+          console.warn('[REC] camera onerror:', e);
+        };
+        state.camRecorder.start(1000);
+        console.log('[REC] camera started, mime:', state.camRecorder.mimeType);
+      } catch (e) {
+        state.camRecorderError = e.message || String(e);
+        console.warn('[REC] camera MediaRecorder failed:', e);
+      }
+    } else {
+      state.camRecorderError = 'no camStream — camera permission not granted';
+    }
+
+    // 3) Screen recorder — silent, captures slide context for the coach
+    state.screenChunks = [];
+    if (state.screenStream) {
+      try {
+        state.screenRecorder = new MediaRecorder(state.screenStream, {
+          mimeType: pickMime(['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm']),
+          videoBitsPerSecond: 400_000
+        });
+        state.screenRecorder.ondataavailable = e => { if (e.data.size) state.screenChunks.push(e.data); };
+        state.screenRecorder.start(1000);
+        console.log('[REC] screen started, mime:', state.screenRecorder.mimeType);
+      } catch (e) {
+        console.warn('[REC] screen MediaRecorder failed:', e);
+      }
+    }
+  }, 400);
+}
+
+function pickMime(candidates) {
+  for (const m of candidates) {
+    if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(m)) return m;
+  }
+  return candidates[candidates.length - 1];
+}
+
+function startLiveTranscription() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  console.log('[SR] SpeechRecognition available:', !!SR);
+
+  if (!SR) {
+    setTranscribeStatus('Not supported in this browser', 'warn');
+    document.getElementById('live-transcript').innerHTML =
+      '<span class="inline-flex items-center gap-2 text-pond-700/80"><span>⚠️</span>Live transcription needs Chrome, Edge, or Safari. Your audio is still being captured — edit the transcript after.</span>';
+    return;
+  }
+
+  // Tear down any previous recognition before starting a new one
+  if (state.recognition) {
+    try { state.recognition.abort(); } catch (e) {}
+    state.recognition = null;
+  }
+
+  const recog = new SR();
+  recog.continuous      = true;
+  recog.interimResults  = true;
+  recog.maxAlternatives = 1;
+  // Default to en-US — navigator.language may report an unsupported locale and silently fail
+  recog.lang = 'en-US';
+  state.recognition = recog;
+  state.recogFailures = 0;
+  state.firstResultReceived = false;
+
+  recog.onstart       = () => { console.log('[SR] onstart');       setTranscribeStatus('Listening', 'live'); };
+  recog.onaudiostart  = () => { console.log('[SR] onaudiostart');  setTranscribeStatus('Listening', 'live'); };
+  recog.onspeechstart = () => { console.log('[SR] onspeechstart');  };
+  recog.onspeechend   = () => { console.log('[SR] onspeechend');    };
+  recog.onaudioend    = () => { console.log('[SR] onaudioend');     };
+  recog.onnomatch     = () => { console.log('[SR] onnomatch');      };
+
+  recog.onresult = e => {
+    state.firstResultReceived = true;
+    let interim = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const res = e.results[i];
+      if (res.isFinal) state.liveFinal += res[0].transcript + ' ';
+      else             interim += res[0].transcript;
+    }
+    state.liveInterim = interim;
+    renderLiveTranscript();
+  };
+
+  recog.onerror = e => {
+    console.warn('[SR] onerror:', e.error);
+    if (e.error === 'no-speech' || e.error === 'aborted') return;
+    state.recogFailures++;
+    const msgMap = {
+      'not-allowed':            'Speech permission denied — enable it in your browser site settings',
+      'service-not-allowed':    'Speech service blocked — check browser settings',
+      'audio-capture':          'Mic unavailable — close other apps using the mic',
+      'network':                'Network error — Speech API needs internet',
+      'language-not-supported': 'Switching to English'
+    };
+    if (e.error === 'language-not-supported') recog.lang = 'en-US';
+    setTranscribeStatus(msgMap[e.error] || `Error: ${e.error}`, 'error');
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed' || e.error === 'audio-capture') {
+      document.getElementById('live-transcript').innerHTML =
+        `<span class="text-koi-700 font-medium">⚠️ ${msgMap[e.error]}</span>`;
+    }
+  };
+
+  recog.onend = () => {
+    console.log('[SR] onend; failures:', state.recogFailures, 'pitchEnded:', state.pitchEnded);
+    if (state.step !== 'record' || state.pitchEnded) {
+      setTranscribeStatus('Stopped', 'off');
+      return;
+    }
+    if (state.recogFailures > 6) {
+      setTranscribeStatus('Stopped after repeated errors', 'error');
+      return;
+    }
+    setTimeout(() => {
+      if (state.step !== 'record' || state.pitchEnded) return;
+      try { recog.start(); console.log('[SR] restarted'); }
+      catch (err) { console.warn('[SR] restart failed:', err); }
+    }, 250);
+  };
+
+  try {
+    recog.start();
+    console.log('[SR] start() called');
+  } catch (e) {
+    console.error('[SR] start() threw:', e);
+    setTranscribeStatus('Could not start: ' + (e.message || 'unknown'), 'error');
+  }
+
+  // Safety net — if no result after 5s, surface a hint
+  setTimeout(() => {
+    if (state.pitchEnded || state.firstResultReceived) return;
+    const el = document.getElementById('live-transcript');
+    if (!el.textContent.trim() || el.textContent.includes('Listening')) {
+      el.innerHTML = `
+        <div class="text-[13px] text-pond-700/80 space-y-1.5">
+          <div class="inline-flex items-center gap-2 font-medium text-pond-900">
+            <span class="inline-flex w-2 h-2 rounded-full bg-koi-500 animate-pulse"></span>
+            Still listening — no speech detected yet.
+          </div>
+          <div class="text-[12px]">Try speaking a few clear words. If nothing appears: check your mic is the right input device, that no other app is using it, and that you're on Chrome / Edge / Safari over <code class="bg-cream-200 px-1 rounded">localhost</code> or HTTPS.</div>
+        </div>`;
+    }
+  }, 5000);
+}
+
+function endLivePitch(auto) {
+  if (state.pitchEnded) return;
+  state.pitchEnded = true;
+  cancelAnimationFrame(state.rafId);
+
+  try { state.recognition?.stop(); } catch (e) {}
+
+  // Stop all three recorders. Capture the blobs once 'stop' fires so the
+  // last chunk lands in our arrays before we build the Blob.
+  const stopRec = (recorder, chunks, key) => new Promise(resolve => {
+    if (!recorder || recorder.state === 'inactive') return resolve(null);
+    recorder.addEventListener('stop', () => {
+      if (chunks?.length) {
+        const mime = recorder.mimeType || 'video/webm';
+        state.captures = state.captures || {};
+        state.captures[key] = new Blob(chunks, { type: mime });
+        console.log(`[REC] ${key} blob built: ${(state.captures[key].size/1024/1024).toFixed(2)} MB (${mime})`);
+      }
+      resolve(null);
+    }, { once: true });
+    try { recorder.stop(); } catch (e) { resolve(null); }
+  });
+
+  // Expose the finalize promise so /api/multimodal-coach can await blob readiness
+  // explicitly instead of guessing with a sleep loop.
+  state.recordersFinalized = Promise.all([
+    stopRec(state.recorder,       state.recBlobs,    'audio'),
+    stopRec(state.camRecorder,    state.camChunks,   'camera'),
+    stopRec(state.screenRecorder, state.screenChunks,'screen')
+  ]);
+  state.recordersFinalized.then(() => console.log('[REC] all recorders finalized'));
+
+  // Release mic, camera and screen — they all stop fighting the audio output
+  if (state.mediaStream)   { state.mediaStream.getTracks().forEach(t => { try { t.stop(); } catch (e) {} }); state.mediaStream = null; }
+  if (state.camStream)     { state.camStream.getTracks().forEach(t => { try { t.stop(); } catch (e) {} });   state.camStream = null; }
+  if (state.screenStream)  { state.screenStream.getTracks().forEach(t => { try { t.stop(); } catch (e) {} });state.screenStream = null; }
+  if (state.audioCtx && state.audioCtx.state !== 'closed') {
+    try { state.audioCtx.close(); } catch (e) {}
+  }
+  state.audioCtx = null;
+  state.analyser = null;
+  state.visData = null;
+
+  const captured = (state.liveFinal + ' ' + state.liveInterim).trim();
+  state.capturedTranscript = captured.length > 20 ? captured : null;
+
+  document.getElementById('live-status').textContent = auto ? 'TIME UP' : 'DONE';
+  document.getElementById('live-dot').className = 'w-1.5 h-1.5 rounded-full bg-lily-400';
+  go('processing');
+}
+
+/* ============ MULTIMODAL UPLOAD (camera video → Gemini) ============ */
+async function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => {
+      const s = r.result.toString();
+      resolve(s.slice(s.indexOf(',') + 1));
+    };
+    r.onerror = reject;
+    r.readAsDataURL(blob);
+  });
+}
+
+async function fetchVisualAnalysis() {
+  // If the user explicitly chose audio-only mode (didn't grant camera), skip
+  // the Gemini call entirely — it's not a failure, it's a chosen mode.
+  if (!PERM_STATUS?.camera?.granted) {
+    console.log('[multimodal] audio-only mode — skipping Gemini call');
+    return { __error: 'audio_only', __reason: 'camera was not granted' };
+  }
+
+  // Wait for the recorders to finish flushing their last chunk. With a hard
+  // ceiling so a stuck recorder doesn't hang the whole flow.
+  if (state.recordersFinalized) {
+    try {
+      await Promise.race([
+        state.recordersFinalized,
+        new Promise((_, rej) => setTimeout(() => rej(new Error('recorder_finalize_timeout')), 15000))
+      ]);
+    } catch (e) {
+      console.warn('[multimodal] recorder finalize wait:', e.message);
+    }
+  }
+  const cam = state.captures?.camera;
+  if (!cam) {
+    console.warn('[multimodal] no camera blob — skipping Gemini call');
+    return { __error: 'insufficient_video', __reason: 'no camera recording captured (recorder may not have flushed)' };
+  }
+  // Floor: ~400 KB ≈ 5s of usable webm at our bitrate
+  if (cam.size < 400 * 1024) {
+    console.warn('[multimodal] camera blob too small:', cam.size);
+    return { __error: 'insufficient_video', __reason: `clip only ${(cam.size/1024).toFixed(0)} KB` };
+  }
+  try {
+    const camera_b64 = await blobToBase64(cam);
+    let screen_b64;
+    if (state.captures.screen && cam.size + state.captures.screen.size < 16 * 1024 * 1024) {
+      screen_b64 = await blobToBase64(state.captures.screen);
+    } else if (state.captures.screen) {
+      console.warn('[multimodal] dropping screen blob to stay under inline cap');
+    }
+    // Bundle deck thumbnails (if a deck was uploaded) so Gemini can critique them
+    const slides = state.deck?.thumbnails?.length
+      ? state.deck.thumbnails
+          .map((b64, i) => b64 ? { page: i + 1, b64 } : null)
+          .filter(Boolean)
+          .slice(0, 12)
+      : null;
+    const timings = state.deck?.timings || null;
+
+    const sc = state.scenario;
+    const res = await fetch('/api/multimodal-coach', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        camera_b64,
+        screen_b64,
+        transcript: state.capturedTranscript,
+        slides,
+        timings,
+        language: window.koiPondLang || 'en',
+        scenario: {
+          investor: sc?.investor || 'Sarah Chen — Partner @ Vanguard Capital',
+          title:    sc?.title    || 'Seed pitch',
+          style:    sc?.style    || 'Direct · interruptive'
+        }
+      })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      console.warn('[multimodal] API error', res.status, data);
+      return { __error: 'api_error', __reason: data.error || `HTTP ${res.status}` };
+    }
+    if (data && data.error) {
+      console.warn('[multimodal] server refused:', data);
+      return { __error: data.error, __reason: data.message || '' };
+    }
+    return data;
+  } catch (err) {
+    console.warn('[multimodal] upload failed:', err);
+    return { __error: 'network', __reason: String(err) };
+  }
+}
+
+async function ensureMicForQa() {
+  if (state.mediaStream) return;
+  try {
+    state.mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const src = ctx.createMediaStreamSource(state.mediaStream);
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 128;
+    src.connect(analyser);
+    state.audioCtx = ctx;
+    state.analyser = analyser;
+    state.visData = new Uint8Array(analyser.frequencyBinCount);
+  } catch (err) {
+    console.warn('[Q&A] mic re-acquire failed:', err);
+  }
+}
+
+function tickLive() {
+  if (state.step !== 'record' || state.pitchEnded) return;
+  state.elapsedMs = Date.now() - state.startedAt;
+  const total     = state.pitchDurationMs || 120000;
+  const remaining = Math.max(0, total - state.elapsedMs);
+  const m = Math.floor(remaining / 60000), s = Math.floor((remaining % 60000) / 1000);
+  document.getElementById('timer-display').textContent = `${m}:${String(s).padStart(2, '0')}`;
+  document.getElementById('timer-bar').style.width = (100 - (remaining / total) * 100) + '%';
+
+  // Unlock End at 30s
+  if (state.elapsedMs >= 30000) {
+    const btn = document.getElementById('pitch-end');
+    if (btn.disabled) {
+      btn.disabled = false;
+      document.getElementById('pitch-end-label').textContent = 'End Pitch';
+    }
+  }
+
+  // Live investor mood — scaled to the chosen pitch length so the lines hit
+  // at the same proportional moments (¼, ½, ¾) regardless of duration.
+  const mood = document.getElementById('investor-mood');
+  const firm = state.scenario?.firm || 'Partner · Vanguard Capital';
+  if      (state.elapsedMs > total * 0.75) mood.textContent = `${firm} · Forming follow-ups`;
+  else if (state.elapsedMs > total * 0.50) mood.textContent = `${firm} · Tracking your wedge`;
+  else if (state.elapsedMs > total * 0.25) mood.textContent = `${firm} · Listening intently`;
+
+  // Visualizer
+  if (state.analyser) {
+    state.analyser.getByteFrequencyData(state.visData);
+    const bars = document.getElementById('record-vis').children;
+    for (let i = 0; i < bars.length; i++) {
+      const v = state.visData[i % state.visData.length] / 255;
+      bars[i].style.height = Math.max(4, v * 56) + 'px';
+      bars[i].classList.toggle('bg-koi-500', v > 0.25);
+      bars[i].classList.toggle('bg-white/15', v <= 0.25);
+    }
+  }
+
+  if (remaining === 0) {
+    endLivePitch(true);
+  } else {
+    state.rafId = requestAnimationFrame(tickLive);
+  }
+}
+
+function renderLiveTranscript() {
+  const el = document.getElementById('live-transcript');
+  const final = state.liveFinal.trim();
+  const interim = state.liveInterim.trim();
+  if (!final && !interim) {
+    el.innerHTML = '<span class="text-pond-700/40 italic">Your words will appear here as you speak…</span>';
+    document.getElementById('word-count').textContent = '0 words';
+    return;
+  }
+  el.innerHTML =
+    `<span>${escapeHtml(final)}</span>` +
+    (interim ? ` <span class="text-pond-700/50">${escapeHtml(interim)}</span>` : '');
+  el.scrollTop = el.scrollHeight;
+  const words = (final + ' ' + interim).trim().split(/\s+/).filter(Boolean).length;
+  document.getElementById('word-count').textContent = `${words} ${words === 1 ? 'word' : 'words'}`;
+}
+
+function escapeHtml(s) { return s.replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+
+/* ============ PROCESSING ============ */
+function runProcessing() {
+  const steps = ['proc-1','proc-2','proc-3','proc-4','proc-5'];
+  steps.forEach(id => {
+    const el = document.getElementById(id);
+    el.classList.remove('opacity-50','text-pond-700');
+    el.classList.add('text-pond-700/50');
+    el.querySelector('.proc-dot').className = 'proc-dot w-4 h-4 rounded-full border-2 border-pond-300 shrink-0';
+  });
+  let i = 0;
+  const advance = () => {
+    if (i > 0) {
+      const prev = document.getElementById(steps[i-1]);
+      prev.classList.remove('text-pond-700/50','text-pond-700');
+      prev.classList.add('text-pond-900');
+      const dot = prev.querySelector('.proc-dot');
+      dot.className = 'proc-dot w-4 h-4 rounded-full bg-lily-500 border-2 border-lily-500 shrink-0 flex items-center justify-center';
+      dot.innerHTML = '<svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+    }
+    if (i < steps.length) {
+      const cur = document.getElementById(steps[i]);
+      cur.classList.remove('text-pond-700/50');
+      cur.classList.add('text-pond-900');
+      const dot = cur.querySelector('.proc-dot');
+      dot.className = 'proc-dot w-4 h-4 rounded-full border-2 border-pond-700 shrink-0 relative';
+      dot.innerHTML = '<span class="absolute inset-0 rounded-full border-2 border-pond-700 animate-ping opacity-50"></span>';
+      i++; setTimeout(advance, 700 + Math.random() * 400);
+    } else {
+      setTimeout(() => go('transcript'), 600);
+    }
+  };
+  advance();
+}
+
+/* ============ TRANSCRIPT ============ */
+function setupTranscript() {
+  // Show the user's actual transcribed pitch. If SR didn't capture, leave empty
+  // and prompt — never seed Maya's mock pitch into the textarea.
+  const ta = document.getElementById('transcript-text');
+  if (state.capturedTranscript) {
+    ta.value = state.capturedTranscript;
+    ta.placeholder = '';
+  } else {
+    ta.value = '';
+    ta.placeholder = "Speech recognition didn't catch your pitch. Type or paste the transcript here, then Continue.";
+  }
+}
+document.getElementById('transcript-rerecord').addEventListener('click', () => go('record'));
+document.getElementById('transcript-continue').addEventListener('click', () => {
+  // Read whatever's currently in the textarea — user edits MUST flow into the API call.
+  const edited = document.getElementById('transcript-text').value.trim();
+  if (edited) state.capturedTranscript = edited;
+  go('analyzing');
+});
+document.getElementById('transcript-play').addEventListener('click', () => {
+  const bar = document.getElementById('transcript-progress');
+  let pct = 0;
+  const id = setInterval(() => {
+    pct += 1.5;
+    bar.style.width = pct + '%';
+    if (pct >= 100) clearInterval(id);
+  }, 30);
+});
+
+/* ============ COACH ANALYSIS (Anthropic) ============ */
+function clamp(n, lo, hi) { n = Number(n); if (!isFinite(n)) return lo; return Math.max(lo, Math.min(hi, n)); }
+
+function populateFromCoach(coach) {
+  if (!coach) return;
+
+  // 1) Coach script — drives both the audio (Fish TTS) and the visible transcript
+  if (coach.script && typeof coach.script === 'string') {
+    COACH_SCRIPT = coach.script;
+    if (fbBlobUrl) { try { URL.revokeObjectURL(fbBlobUrl); } catch (e) {} }
+    fbBlobUrl = null;
+    fbAudioPromise = null;
+    fbFishUnavailable = false;
+    state.audioReady = false;
+    const transcriptEl = document.getElementById('fb-script-transcript');
+    if (transcriptEl) transcriptEl.textContent = coach.script;
+
+    // Kick off TTS NOW so the audio is ready by the time the user hits Play.
+    // The analyzing screen will await this before transitioning to feedback.
+    state.audioPromise = prefetchCoachAudio();
+  }
+
+  // 2) Overall rating — single number derived from the scorecard
+  if (Array.isArray(coach.scorecard) && coach.scorecard.length) {
+    // Update the global scorecard so the deeper scorecard step picks these up too
+    coach.scorecard.forEach(s => {
+      const match = scorecard.find(x => x.name.toLowerCase() === String(s.name || '').toLowerCase());
+      if (match) match.score = clamp(s.score, 0, 100);
+    });
+
+    const overallEntry = coach.scorecard.find(s => /overall/i.test(s.name || ''));
+    const overallScore = overallEntry
+      ? clamp(overallEntry.score, 0, 100)
+      : Math.round(coach.scorecard.reduce((sum, s) => sum + clamp(s.score, 0, 100), 0) / coach.scorecard.length);
+
+    const tier =
+      overallScore >= 90 ? 'YC interview-ready. Would survive a Day-1 partner grilling.'
+    : overallScore >= 75 ? 'Strong. Fundable as-is at angel / pre-seed — sharpen 1–2 spots.'
+    : overallScore >= 60 ? "Watch. Bones are real, but at least one YC lens fails."
+    : overallScore >= 45 ? 'Weak. Fails 2+ YC lenses — talk to 10 users and rewrite.'
+    : overallScore >= 30 ? 'Critical. Fails 3+ lenses — unlikely to attract tier-1 capital.'
+    :                      'Tarpit. Not a startup yet — kill it and pick something else.';
+
+    const scoreEl = document.getElementById('fb-rating-score');
+    const tierEl  = document.getElementById('fb-rating-tier');
+    if (scoreEl) scoreEl.textContent = overallScore;
+    if (tierEl)  tierEl.textContent  = tier;
+
+    // Persist for save: pitch score = overall coach score
+    state.pitchScore = overallScore;
+    state.coachScorecard = coach.scorecard.map(s => ({
+      name:      s.name,
+      score:     clamp(s.score, 0, 100),
+      rationale: typeof s.rationale === 'string' ? s.rationale : null
+    }));
+    // Stash rationales by dimension name for the scorecard renderer
+    state.coachRationale = {};
+    coach.scorecard.forEach(s => {
+      if (s && s.name && typeof s.rationale === 'string') {
+        state.coachRationale[s.name] = s.rationale;
+      }
+    });
+  }
+
+  // Weakest area — coach.weakest.title or the lowest-scoring scorecard entry
+  if (coach.weakest?.title) {
+    state.weakArea = String(coach.weakest.title).slice(0, 64);
+  } else if (Array.isArray(coach.scorecard) && coach.scorecard.length) {
+    const skills = coach.scorecard.filter(s => !/overall/i.test(s.name || ''));
+    if (skills.length) {
+      const min = skills.reduce((lo, s) => (s.score < lo.score ? s : lo), skills[0]);
+      state.weakArea = min.name;
+    }
+  }
+
+  // ---- Idea Validator structured fields ----
+  // Verdict card (Build it / Maybe / Skip it + why + YC-rubric meaning)
+  const verdictCard    = document.getElementById('fb-verdict-card');
+  const verdictLabel   = document.getElementById('fb-verdict-label');
+  const verdictBadge   = document.getElementById('fb-verdict-badge');
+  const verdictWhy     = document.getElementById('fb-verdict-why');
+  const verdictMeaning = document.getElementById('fb-verdict-meaning');
+  if (verdictCard && coach.verdict) {
+    const v = String(coach.verdict).trim();
+    verdictLabel.textContent = v;
+    verdictWhy.textContent   = coach.why || '';
+    const norm = v.toLowerCase();
+    let cls = 'bg-pond-100 text-pond-700';        // default
+    let dot = '●';
+    let meaning = '';
+    if (norm.includes('build')) {
+      cls = 'bg-lily-100 text-lily-700'; dot = '✓';
+      meaning = '≥ 4 dimensions in the 75+ band · no dimension below 50 · monetization is defensible. Fundable as-is at angel/pre-seed.';
+    } else if (norm.includes('maybe')) {
+      cls = 'bg-koi-100 text-koi-700'; dot = '~';
+      meaning = 'Mixed signals · average 55–74 OR strong on idea but weak on monetization/feasibility. Has bones; needs sharpening on 1–2 YC lenses.';
+    } else if (norm.includes('skip')) {
+      cls = 'bg-pond-900 text-white'; dot = '✕';
+      meaning = '3+ dimensions below 55 · OR any single dimension below 30 · OR matches a known YC tarpit pattern. Reconsider before sinking another month into this.';
+    }
+    verdictBadge.className = `shrink-0 inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-full ${cls}`;
+    verdictBadge.textContent = `${dot} ${v}`;
+    if (verdictMeaning) verdictMeaning.textContent = meaning;
+    verdictCard.classList.remove('hidden');
+    state.verdict = v;
+  }
+
+  // Competitors list
+  const compCard = document.getElementById('fb-competitors-card');
+  const compList = document.getElementById('fb-competitors-list');
+  if (compCard && compList && Array.isArray(coach.competitors) && coach.competitors.length) {
+    compList.innerHTML = coach.competitors.slice(0, 4).map(c => `
+      <div class="flex gap-3 items-start">
+        <span class="shrink-0 mt-0.5 w-1.5 h-1.5 rounded-full bg-koi-500"></span>
+        <div class="min-w-0 flex-1">
+          <p class="text-[14px] font-semibold text-pond-900 leading-snug">${escapeHtml(c.name || '')}</p>
+          <p class="text-[13px] text-pond-700/75 leading-snug mt-0.5">${escapeHtml(c.what || '')}</p>
+        </div>
+      </div>
+    `).join('');
+    compCard.classList.remove('hidden');
+  }
+
+  // What would make this stronger
+  const strongerCard = document.getElementById('fb-stronger-card');
+  const strongerList = document.getElementById('fb-stronger-list');
+  if (strongerCard && strongerList && Array.isArray(coach.stronger) && coach.stronger.length) {
+    strongerList.innerHTML = coach.stronger.slice(0, 3).map((s, i) => `
+      <li class="flex gap-3 items-start">
+        <span class="shrink-0 inline-flex items-center justify-center w-6 h-6 rounded-full bg-koi-500 text-pond-900 text-[11px] font-bold">${i + 1}</span>
+        <p class="text-[14px] text-pond-900 leading-[1.55] flex-1">${escapeHtml(String(s))}</p>
+      </li>
+    `).join('');
+    strongerCard.classList.remove('hidden');
+  }
+
+  // Save transcript + coach feedback for persistence
+  if (state.capturedTranscript) state.finalTranscript = state.capturedTranscript;
+  if (typeof coach.script === 'string') state.coachScript = coach.script;
+  state.coachVerdict     = coach.verdict || null;
+  state.coachCompetitors = Array.isArray(coach.competitors) ? coach.competitors : null;
+  state.coachStronger    = Array.isArray(coach.stronger) ? coach.stronger : null;
+  state.coachWeakest     = coach.weakest || null;
+}
+
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+async function fetchCoachAnalysis() {
+  // Client-side gate — don't even hit the API on garbage input
+  const t = (state.capturedTranscript || '').trim();
+  const words = t ? t.split(/\s+/).filter(w => w.length > 1).length : 0;
+  if (words < 30) {
+    console.warn('[coach] skipping — transcript too short:', words, 'words');
+    return { __error: 'insufficient_pitch', __reason: `only ${words} words captured` };
+  }
+  try {
+    const sc = state.scenario;
+    const res = await fetch('/api/coach', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        transcript: t,
+        language: window.koiPondLang || 'en',
+        scenario: {
+          investor: sc?.investor || 'Sarah Chen — Partner @ Vanguard Capital',
+          title:    sc?.title    || 'Seed pitch',
+          style:    sc?.style    || 'Direct · interruptive',
+          focus:    sc?.focus    || 'B2B SaaS · AI infra'
+        }
+      })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      console.warn('[coach API]', res.status, data);
+      return { __error: 'api_error', __reason: data.error || `HTTP ${res.status}` };
+    }
+    if (data && data.error) {
+      console.warn('[coach] server refused:', data);
+      return { __error: data.error, __reason: data.message || '' };
+    }
+    return data;
+  } catch (err) {
+    console.warn('[coach API]', err);
+    return { __error: 'network', __reason: String(err) };
+  }
+}
+
+async function fetchQaQuestions() {
+  const t = (state.capturedTranscript || '').trim();
+  try {
+    const sc = state.scenario;
+    const res = await fetch('/api/qa-questions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        transcript: t,
+        weakArea:   state.weakArea || null,  // may be null on first call
+        language:   window.koiPondLang || 'en',
+        scenario: {
+          investor: sc?.investor || 'Sarah Chen — Partner @ Vanguard Capital',
+          title:    sc?.title    || 'Seed pitch',
+          style:    sc?.style    || 'Direct · interruptive'
+        }
+      })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !Array.isArray(data?.questions) || !data.questions.length) {
+      console.warn('[qa-questions] falling back to defaults:', res.status, data);
+      return null;
+    }
+    return data.questions;
+  } catch (err) {
+    console.warn('[qa-questions] network:', err);
+    return null;
+  }
+}
+
+function resetFeedbackDom() {
+  // Hide every conditionally-revealed card so a re-run doesn't show stale data
+  ['fb-visual-card','fb-reading-flag','fb-delivery-card','fb-verdict-card',
+   'fb-competitors-card','fb-stronger-card','slides-card'].forEach(id => {
+    document.getElementById(id)?.classList.add('hidden');
+  });
+}
+
+async function runAnalyzing() {
+  resetFeedbackDom();
+
+  const sub = document.querySelector('[data-step="analyzing"] p');
+  const setSub = t => { if (sub && state.step === 'analyzing') sub.textContent = t; };
+
+  // Surface real per-API status so the user can see both pipelines actually firing.
+  const ladderEl = document.getElementById('analyzing-ladder');
+  if (ladderEl) {
+    ladderEl.innerHTML = `
+      <li id="al-claude" class="flex items-center gap-3 text-[13px] text-pond-700">
+        <span class="al-dot w-4 h-4 rounded-full border-2 border-pond-700 shrink-0 relative"><span class="absolute inset-0 rounded-full border-2 border-pond-700 animate-ping opacity-50"></span></span>
+        Claude · reading the transcript
+      </li>
+      <li id="al-gemini" class="flex items-center gap-3 text-[13px] text-pond-700">
+        <span class="al-dot w-4 h-4 rounded-full border-2 border-pond-700 shrink-0 relative"><span class="absolute inset-0 rounded-full border-2 border-pond-700 animate-ping opacity-50"></span></span>
+        Gemini · watching the camera + slides
+      </li>
+      <li id="al-voice" class="flex items-center gap-3 text-[13px] text-pond-700/60">
+        <span class="al-dot w-4 h-4 rounded-full border-2 border-pond-300 shrink-0"></span>
+        Recording The Shark voice
+      </li>
+      <li id="al-qa" class="flex items-center gap-3 text-[13px] text-pond-700/60">
+        <span class="al-dot w-4 h-4 rounded-full border-2 border-pond-300 shrink-0"></span>
+        Drafting your investor's follow-up questions
+      </li>
+    `;
+  }
+  const markLadder = (id, ok) => {
+    const li = document.getElementById(id);
+    if (!li) return;
+    const dot = li.querySelector('.al-dot');
+    if (ok) {
+      dot.className = 'al-dot w-4 h-4 rounded-full bg-lily-500 border-2 border-lily-500 shrink-0 flex items-center justify-center';
+      dot.innerHTML = '<svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+      li.classList.remove('text-pond-700/60');
+      li.classList.add('text-pond-900');
+    } else {
+      dot.className = 'al-dot w-4 h-4 rounded-full bg-koi-500 border-2 border-koi-500 shrink-0 flex items-center justify-center';
+      dot.innerHTML = '<svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>';
+      li.classList.remove('text-pond-700/60');
+      li.classList.add('text-koi-700');
+    }
+  };
+
+  setSub('Two AI passes running in parallel — one on words, one on body language.');
+
+  // Fire coach + visual in parallel; QA questions fire as soon as coach lands
+  // (they're cheaper than the visual call and depend on the same transcript).
+  const coachP  = fetchCoachAnalysis().then(r => { markLadder('al-claude',  r && !r.__error); return r; });
+  const visualP = fetchVisualAnalysis().then(r => {
+    // audio_only is a chosen mode, not a failure — mark the ladder as "skipped" not "error"
+    if (r?.__error === 'audio_only') {
+      const li = document.getElementById('al-gemini');
+      if (li) {
+        const dot = li.querySelector('.al-dot');
+        if (dot) {
+          dot.className = 'al-dot w-4 h-4 rounded-full bg-pond-300 border-2 border-pond-300 shrink-0 flex items-center justify-center';
+          dot.innerHTML = '<svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="12" x2="18" y2="12"/></svg>';
+        }
+        li.classList.remove('text-pond-700');
+        li.classList.add('text-pond-700/55');
+        li.lastChild.textContent = ' Skipped — audio-only mode';
+      }
+    } else {
+      markLadder('al-gemini',  r && !r.__error);
+    }
+    return r;
+  });
+
+  const [coachRes, visualRes] = await Promise.allSettled([coachP, visualP]);
+
+  const coachRaw  = coachRes.status  === 'fulfilled' ? coachRes.value  : null;
+  const visualRaw = visualRes.status === 'fulfilled' ? visualRes.value : null;
+  const coachOK  = coachRaw  && !coachRaw.__error;
+  const visualOK = visualRaw && !visualRaw.__error;
+
+  console.log('[analyzing] coach=', coachOK ? 'OK' : (coachRaw?.__error || 'null'),
+              'visual=', visualOK ? 'OK' : (visualRaw?.__error || 'null'));
+
+  state.coach  = coachOK  ? coachRaw  : null;
+  state.visual = visualOK ? visualRaw : null;
+  state.lastCoachReason  = coachOK  ? null : (coachRaw?.__error  ? `${coachRaw.__error}${coachRaw.__reason ? ' — ' + coachRaw.__reason : ''}` : 'no response');
+  state.lastVisualReason = visualOK ? null : (visualRaw?.__error ? `${visualRaw.__error}${visualRaw.__reason ? ' — ' + visualRaw.__reason : ''}` : 'no response');
+  state.feedbackError = (!coachOK && !visualOK)
+    ? (coachRaw?.__reason || visualRaw?.__reason || 'No pitch content captured.')
+    : null;
+
+  if (coachOK)  populateFromCoach(coachRaw);
+  // Always run populateFromVisual so it can render the failure / unknown banner.
+  populateFromVisual(visualOK ? visualRaw : { __error: state.lastVisualReason || 'no_response' });
+
+  // Now that coach has set state.weakArea, kick off Q&A question generation.
+  // Don't block the feedback screen on it — by the time the user reaches Q&A,
+  // it's almost always done.
+  fetchQaQuestions().then(items => {
+    if (items && items.length >= 1) {
+      // Pad to 3 if the model returned fewer.
+      while (items.length < 3) items.push(QA_FALLBACK[items.length]);
+      qaQuestions = items.slice(0, 3);
+      console.log('[qa-questions] ready:', qaQuestions.length, 'questions');
+    } else {
+      console.log('[qa-questions] using fallback');
+    }
+    markLadder('al-qa', true);
+    // Warm Fish TTS for all 3 questions in parallel — by the time the user
+    // clicks Start Q&A (after seeing feedback + scorecard + intro), the audio
+    // is almost always already cached, so the screen transition is instant.
+    prefetchAllQaQuestionsAudio();
+  }).catch(() => markLadder('al-qa', false));
+
+  // Wait for the Fish TTS to finish (kicked off inside populateFromCoach) so the
+  // user lands on the feedback screen with audio ready — no 30-second click lag.
+  // Hard-cap the wait so a stuck Fish API doesn't strand them on the analyzer.
+  if (coachOK && state.audioPromise) {
+    setSub('Recording The Shark voice — almost there.');
+    try {
+      await Promise.race([
+        state.audioPromise,
+        new Promise(r => setTimeout(() => r('timeout'), 30000))
+      ]);
+    } catch {/* swallow — race timer never rejects */}
+    markLadder('al-voice', !!fbBlobUrl);
+  } else {
+    // No coach script — voice can't be generated; mark and move on.
+    markLadder('al-voice', false);
+  }
+
+  if (state.step === 'analyzing') go('feedback');
+}
+
+function populateFromVisual(v) {
+  // Always reveal the visual card so the user knows Gemini ran (or tried to).
+  const fbVisualCard   = document.getElementById('fb-visual-card');
+  const fbVisualScript = document.getElementById('fb-visual-script');
+  const fbPresence     = document.getElementById('fb-presence-score');
+  const fbDiag         = document.getElementById('fb-visual-diag');
+  const fbDiagText     = document.getElementById('fb-visual-diag-text');
+  fbVisualCard?.classList.remove('hidden');
+
+  // ---- Audio-only mode (user chose not to grant camera) ----
+  if (v?.__error === 'audio_only') {
+    if (fbVisualScript) {
+      fbVisualScript.innerHTML = '<span class="text-pond-700/70">You ran this pitch in <strong>audio-only mode</strong> — no camera, no body-language read. The Shark only graded what you said.</span>';
+    }
+    if (fbPresence) fbPresence.textContent = '—';
+    if (fbDiag && fbDiagText) {
+      fbDiagText.textContent = 'Want a presence read on your delivery? Allow the camera on the next run and Gemini will grade posture, eye contact, gestures, tempo, and tone.';
+      fbDiag.classList.remove('hidden');
+    }
+    return;
+  }
+
+  // ---- Failure path ----
+  // v.__error is set by fetchVisualAnalysis when Gemini failed or no camera blob.
+  // v.error is the in-band Gemini error (e.g. insufficient_video, truncated).
+  const errCode = v?.__error || v?.error;
+  if (errCode || !v) {
+    if (fbVisualScript) {
+      fbVisualScript.innerHTML = '<span class="text-pond-700/55 italic">Gemini didn\'t return visual feedback for this run.</span>';
+    }
+    if (fbPresence) fbPresence.textContent = '—';
+    if (fbDiag && fbDiagText) {
+      const reason = v?.message || v?.__reason || errCode || 'unknown error';
+      const prettyMap = {
+        insufficient_video:    'Camera clip was too short, dark, or empty for Gemini to read. Pitch for at least 30 seconds with the camera on.',
+        api_error:             `Gemini API call failed: ${reason}. Try again — sometimes the model just stalls.`,
+        network:               'Network error reaching Gemini. Check your connection and re-run.',
+        truncated:             'Gemini ran out of output budget mid-response — its analysis was cut off. Retry the pitch.',
+        no_structured_output:  'Gemini returned an unparseable response. Retry the pitch.'
+      };
+      fbDiagText.textContent = prettyMap[errCode] || `Reason: ${reason}`;
+      fbDiag.classList.remove('hidden');
+    }
+    return;
+  }
+
+  // ---- Happy path ----
+  if (fbDiag) fbDiag.classList.add('hidden');
+
+  if (fbVisualScript) {
+    fbVisualScript.textContent = v.visual_script
+      || 'Gemini returned a structured read but no narrative paragraph.';
+  }
+  if (fbPresence && typeof v.overall_presence === 'number') {
+    const presence = Math.max(0, Math.min(100, Math.round(v.overall_presence)));
+    fbPresence.textContent = presence;
+    state.presence = presence;     // persisted alongside scorecard JSONB
+  }
+
+  // Reading-from-script badge — only when Gemini called it WITH evidence.
+  const readingFlag = document.getElementById('fb-reading-flag');
+  const readingEv   = document.getElementById('fb-reading-evidence');
+  if (readingFlag) readingFlag.classList.add('hidden');
+  if (readingFlag && v.reading_from_script?.detected === true && v.reading_from_script.evidence) {
+    if (readingEv) readingEv.textContent = v.reading_from_script.evidence;
+    readingFlag.classList.remove('hidden');
+  }
+
+  // Delivery breakdown — show every dimension. Unknowns render dimmed with an
+  // honest "Gemini couldn't read this" caption instead of disappearing silently.
+  const dims = [
+    { key: 'posture',      label: 'Posture',      icon: '🪑' },
+    { key: 'gestures',     label: 'Gestures',     icon: '🤲' },
+    { key: 'facial',       label: 'Expression',   icon: '🙂' },
+    { key: 'eye_contact',  label: 'Eye contact',  icon: '👁️' },
+    { key: 'tempo',        label: 'Tempo',        icon: '⏱️' },
+    { key: 'tone',         label: 'Tone',         icon: '🎙️' },
+    { key: 'screen_usage', label: 'Slide pacing', icon: '🖥️' }
+  ];
+  const present = dims
+    .map(d => ({ ...d, data: v[d.key] }))
+    .filter(d => d.data && (d.data.title || d.data.note));
+
+  const deliveryCard = document.getElementById('fb-delivery-card');
+  const deliveryGrid = document.getElementById('fb-delivery-grid');
+  if (deliveryCard && deliveryGrid && present.length > 0) {
+    deliveryGrid.innerHTML = present.map(d => {
+      const isUnknown = d.data.unknown === true;
+      const cls = isUnknown
+        ? 'rounded-xl bg-[#0A0A06]/3 ring-1 ring-[#0A0A06]/5 p-4 opacity-70'
+        : 'rounded-xl bg-[#0A0A06]/4 ring-1 ring-[#0A0A06]/6 p-4';
+      const titleText = d.data.title || (isUnknown ? 'Gemini couldn\'t read this' : '—');
+      const noteText  = d.data.note  || '';
+      const tag = isUnknown
+        ? '<span class="text-[9px] uppercase tracking-wider font-bold text-pond-700/45 ml-auto">Unread</span>'
+        : '';
+      return `
+        <div class="${cls}">
+          <div class="flex items-center gap-2 mb-1.5">
+            <span class="text-[14px]" aria-hidden="true">${d.icon}</span>
+            <p class="text-[10px] uppercase tracking-wider font-bold text-pond-700/65">${d.label}</p>
+            ${tag}
+          </div>
+          <p class="text-[13.5px] font-semibold text-pond-900 leading-snug">${escapeHtml(titleText)}</p>
+          <p class="text-[12.5px] text-pond-900/80 leading-snug mt-1">${escapeHtml(noteText)}</p>
+        </div>
+      `;
+    }).join('');
+    deliveryCard.classList.remove('hidden');
+  } else if (deliveryCard) {
+    // No dimension data at all — keep the section hidden but surface why on the visual card.
+    if (fbDiag && fbDiagText) {
+      fbDiagText.textContent = 'Gemini didn\'t return any per-dimension reads. The narrative above is all it gave back this run.';
+      fbDiag.classList.remove('hidden');
+    }
+  }
+
+  // Per-slide review — show the slides card whenever the user uploaded a deck,
+  // even if Gemini returned no slide_analysis (so they know it didn't critique).
+  if (state.deck?.thumbnails?.length) {
+    const slideCard = document.getElementById('slides-card');
+    const grid      = document.getElementById('slide-reviews');
+    const deckBox   = document.getElementById('deck-verdict');
+    if (slideCard && grid) {
+      const labelMap = {
+        'Strong':   { cls: 'bg-lily-50 text-lily-700 border-lily-200',   icon: '✓' },
+        'Watch':    { cls: 'bg-cream-200 text-pond-700 border-pond-100', icon: '👀' },
+        'Critical': { cls: 'bg-koi-50 text-koi-700 border-koi-200',      icon: '🚨' }
+      };
+      const reviews = Array.isArray(v.slide_analysis) ? v.slide_analysis : [];
+      const reviewByPage = Object.fromEntries(reviews.map(r => [r.page, r]));
+
+      grid.innerHTML = state.deck.thumbnails.slice(0, 12).map((thumb, i) => {
+        const page = i + 1;
+        const r    = reviewByPage[page];
+        const lab  = r ? (labelMap[r.label] || labelMap['Watch']) : null;
+        const tag  = r
+          ? `<span class="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full border ${lab.cls}">${lab.icon} ${r.label || 'Watch'}</span>`
+          : `<span class="text-[10px] font-bold uppercase tracking-wider text-pond-700/45">Not critiqued</span>`;
+        const verdict = r?.verdict ? escapeHtml(r.verdict) : 'Gemini didn\'t critique this slide.';
+        return `
+          <div class="flex gap-3 p-3 rounded-xl bg-cream-100 ring-1 ring-cream-200">
+            <div class="w-20 aspect-[4/3] bg-pond-900 rounded-md overflow-hidden shrink-0 flex items-center justify-center ring-1 ring-cream-50/40">
+              ${thumb ? `<img src="data:image/jpeg;base64,${thumb}" class="max-w-full max-h-full" alt="Slide ${page}">` : '<span class="text-white/30 text-[10px]">—</span>'}
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2 mb-1">
+                <span class="text-[10px] font-bold text-pond-700/50">SLIDE ${page}</span>
+                ${tag}
+              </div>
+              <p class="text-[12.5px] text-pond-900 leading-snug">${verdict}</p>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      if (v.deck_overall && (v.deck_overall.title || v.deck_overall.note)) {
+        const t = document.getElementById('deck-verdict-title');
+        const n = document.getElementById('deck-verdict-note');
+        if (t) t.textContent = v.deck_overall.title || '—';
+        if (n) n.textContent = v.deck_overall.note  || '';
+        deckBox?.classList.remove('hidden');
+      } else {
+        deckBox?.classList.add('hidden');
+      }
+      slideCard.classList.remove('hidden');
+    }
+  }
+}
+
+/* ============ FEEDBACK (Fish Audio custom voice) ============ */
+// Coach script — replaced live by /api/coach (Claude) once the user finishes pitching.
+// This default is the fallback when no transcript was captured (e.g. text-mode skip).
+let COACH_SCRIPT = `Okay, so... uhh, let's talk straight about this one. The good — "high-stakes practice you can't practice for." That's sticky. That's a real pain people feel. Keep it. But, um, you said founders score twenty percent higher and you never said across how many. Five? Five thousand? A partner pins you on that and you have nothing. And you skipped competition completely. Reverse engineer it: if this idea is so clean, why hasn't a giant company done it already? You need that answer ready, not avoided. Three fixes. One — put a real number behind the traction stat, or kill it from the pitch. Two — name two competitors and tell me in one sentence each why they won't crush you. Three — close with the ask, not a hope. Um, and before you pitch again, go talk to a real customer. Not a segment. A human.`;
+
+const ICON_PLAY  = '<polygon points="6 4 20 12 6 20 6 4"/>';
+const ICON_PAUSE = '<rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>';
+const ICON_LOAD  = '<g><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-opacity=".25" stroke-width="2.5"/><path d="M21 12a9 9 0 0 0-9-9" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="0.8s" repeatCount="indefinite"/></path></g>';
+
+let fbAudio = null;         // HTMLAudioElement for Fish path
+let fbBlobUrl = null;       // cached audio so Replay doesn't re-fetch
+let fbFetching = false;
+let fbFishUnavailable = false; // sticky — once Fish errors, stop retrying every click
+let fbUtterance = null;     // browser-TTS fallback handle
+let fbFallbackInterval = null;
+let fbIsPlaying = false;    // single source of truth for the play button state
+
+// Smart quotes / em-dashes can crash some macOS SpeechSynthesis voices — normalise
+const COACH_SCRIPT_PLAIN = COACH_SCRIPT
+  .replace(/[‘’]/g, "'")
+  .replace(/[“”]/g, '"')
+  .replace(/[–—]/g, ',');
+
+function fbSetIcon(svg) { document.getElementById('fb-play-icon').innerHTML = svg; }
+function fbSetPlaying(v) {
+  fbIsPlaying = v;
+  const btn = document.getElementById('fb-play');
+  if (btn) btn.disabled = false;            // never hard-disabled; toggle handles state
+  fbSetIcon(v ? ICON_PAUSE : ICON_PLAY);
+}
+
+function setupFeedback() {
+  document.getElementById('fb-progress').style.width = '0%';
+  fbSetIcon(ICON_PLAY);
+  fbIsPlaying = false;
+  if (fbAudio) { try { fbAudio.pause(); fbAudio.currentTime = 0; } catch (e) {} }
+  if (fbFallbackInterval) { clearInterval(fbFallbackInterval); fbFallbackInterval = null; }
+  if ('speechSynthesis' in window) speechSynthesis.cancel();
+
+  // If no coach response landed, leave the transcript + rating as placeholders
+  // so the user sees a clean empty state. The empty-state toggle below handles
+  // the "couldn't analyze" case.
+
+  // Toggle between empty state and real content
+  const empty   = document.getElementById('feedback-empty');
+  const content = document.getElementById('feedback-content');
+  if (state.feedbackError) {
+    empty?.classList.remove('hidden');
+    content?.classList.add('hidden');
+    const reasonEl = document.getElementById('feedback-empty-reason');
+    if (reasonEl) {
+      reasonEl.textContent =
+        state.feedbackError === 'No pitch content captured.'
+          ? 'No pitch content was captured. Pitch for at least 30 seconds with your camera and mic on, then try again.'
+          : `Couldn't analyze your pitch — ${state.feedbackError}. Pitch for at least 30 seconds with your camera and mic on, then try again.`;
+    }
+  } else {
+    empty?.classList.add('hidden');
+    content?.classList.remove('hidden');
+  }
+
+  // Surface audio-readiness on the play button so the user knows it'll just play.
+  const playBtn = document.getElementById('fb-play');
+  if (playBtn) {
+    if (fbBlobUrl) {
+      playBtn.title = 'Voice ready · click to play';
+    } else if (fbFishUnavailable) {
+      playBtn.title = 'Voice unavailable — read the transcript below';
+    } else if (fbAudioPromise) {
+      playBtn.title = 'Voice still rendering · click to play when ready';
+    }
+  }
+}
+
+document.getElementById('feedback-retry')?.addEventListener('click', () => location.reload());
+
+// Single in-flight TTS request — both prefetch and on-click reuse this promise
+// so we never fire two parallel Fish requests for the same script.
+let fbAudioPromise = null;
+
+function fetchCoachAudio({ forceUiSpinner = false } = {}) {
+  if (fbBlobUrl) return Promise.resolve(fbBlobUrl);
+  if (fbFishUnavailable) return Promise.resolve(null);
+  // Don't ship the placeholder Maya script to TTS — wait until the live coach lands.
+  if (!state.coach && COACH_SCRIPT.startsWith("Okay, so... uhh, let's talk straight about this one")) {
+    console.warn('[fetchCoachAudio] coach not ready yet — refusing to TTS the placeholder');
+    return Promise.resolve(null);
+  }
+  if (fbAudioPromise) return fbAudioPromise;
+
+  if (forceUiSpinner) fbSetIcon(ICON_LOAD);
+  fbFetching = true;
+
+  fbAudioPromise = (async () => {
+    try {
+      const res = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: COACH_SCRIPT })
+      });
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        fbFishUnavailable = true;
+        throw new Error(errBody.error || `HTTP ${res.status}`);
+      }
+      const blob = await res.blob();
+      fbBlobUrl = URL.createObjectURL(blob);
+      state.audioReady = true;
+      console.log('[Fish TTS] audio ready,', (blob.size/1024).toFixed(0), 'KB');
+      return fbBlobUrl;
+    } catch (err) {
+      console.warn('[Fish TTS] failed:', err.message);
+      return null;
+    } finally {
+      fbFetching = false;
+    }
+  })();
+
+  return fbAudioPromise;
+}
+
+// Kicked off by populateFromCoach as soon as the live script is set.
+function prefetchCoachAudio() {
+  return fetchCoachAudio({ forceUiSpinner: false });
+}
+
+function stopAllAudio() {
+  // Coach feedback audio (Fish TTS of the analyzing-screen script)
+  if (fbAudio) {
+    try { fbAudio.pause(); fbAudio.currentTime = 0; } catch (e) {}
+  }
+  // Q&A question audio — separate Audio element, separate cache
+  if (typeof qaAudio !== 'undefined' && qaAudio) {
+    try { qaAudio.pause(); qaAudio.currentTime = 0; } catch (e) {}
+  }
+  // System voice fallback (used when Fish is down)
+  if ('speechSynthesis' in window) speechSynthesis.cancel();
+  if (fbFallbackInterval) { clearInterval(fbFallbackInterval); fbFallbackInterval = null; }
+  // Reset the coach play button icon so it doesn't look "playing" on the next visit
+  if (typeof fbSetPlaying === 'function') { try { fbSetPlaying(false); } catch (e) {} }
+}
+
+function showVoiceUnavailable() {
+  // SpeechSynthesis fallback removed — it's a documented browser-crash trigger
+  // on macOS with long scripts. When Fish Audio is down, show a clear message
+  // instead and rely on the visible coach text below.
+  fbSetPlaying(false);
+  const card = document.getElementById('fb-play')?.closest('.relative');
+  if (!card) return;
+  let banner = card.querySelector('[data-voice-banner]');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.setAttribute('data-voice-banner', '');
+    banner.className = 'mt-4 text-[12px] text-koi-300 bg-koi-500/10 border border-koi-500/30 rounded-lg px-3 py-2 leading-snug';
+    banner.innerHTML = `<strong>Voice coach offline.</strong> Top up your Fish Audio balance to hear the spoken feedback. The written breakdown below is the same coaching, in text.`;
+    card.appendChild(banner);
+  }
+}
+
+let fbBusy = false;
+async function playFeedback() {
+  // Toggle pause if already playing (Fish path)
+  if (fbAudio && !fbAudio.paused) {
+    fbAudio.pause();
+    fbSetPlaying(false);
+    return;
+  }
+  // Toggle pause if SpeechSynthesis is going (fallback path)
+  if ('speechSynthesis' in window && speechSynthesis.speaking) {
+    speechSynthesis.cancel();
+    if (fbFallbackInterval) { clearInterval(fbFallbackInterval); fbFallbackInterval = null; }
+    fbSetPlaying(false);
+    return;
+  }
+  if (fbBusy) return;             // hard guard against rapid double-fires
+  fbBusy = true;
+
+  try {
+    // Resume if paused mid-audio (Fish)
+    if (fbAudio && fbAudio.src && fbAudio.currentTime > 0 && fbAudio.currentTime < fbAudio.duration) {
+      await fbAudio.play();
+      fbSetPlaying(true);
+      return;
+    }
+
+    // Show the loading spinner only if audio isn't already cached.
+    if (!fbBlobUrl) fbSetIcon(ICON_LOAD);
+    const url = await fetchCoachAudio({ forceUiSpinner: true });
+
+    if (!url) {
+      showVoiceUnavailable();
+      return;
+    }
+
+    // Fish Audio path — fresh audio element
+    if (fbAudio) { try { fbAudio.pause(); } catch (e) {} }
+    fbAudio = new Audio(url);
+    fbAudio.playbackRate = parseFloat(document.getElementById('fb-speed').value);
+    fbAudio.addEventListener('timeupdate', () => {
+      if (!fbAudio.duration) return;
+      document.getElementById('fb-progress').style.width =
+        (fbAudio.currentTime / fbAudio.duration * 100) + '%';
+    });
+    fbAudio.addEventListener('ended', () => {
+      fbSetPlaying(false);
+      document.getElementById('fb-progress').style.width = '100%';
+    });
+    fbAudio.addEventListener('pause', () => {
+      if (fbAudio.currentTime < fbAudio.duration) fbSetPlaying(false);
+    });
+    try { await fbAudio.play(); fbSetPlaying(true); }
+    catch (e) { console.warn('[audio play]', e); fbSetPlaying(false); }
+  } finally {
+    fbBusy = false;
+  }
+}
+
+document.getElementById('fb-play').addEventListener('click', playFeedback);
+document.getElementById('fb-replay').addEventListener('click', () => {
+  document.getElementById('fb-progress').style.width = '0%';
+  if (fbAudio) { fbAudio.currentTime = 0; }
+  playFeedback();
+});
+document.getElementById('fb-speed').addEventListener('change', e => {
+  const r = parseFloat(e.target.value);
+  if (fbAudio) fbAudio.playbackRate = r;
+});
+document.getElementById('fb-continue').addEventListener('click', () => {
+  if (fbAudio) { try { fbAudio.pause(); } catch (e) {} }
+  if (fbUtterance && 'speechSynthesis' in window) speechSynthesis.cancel();
+  go('scorecard');
+});
+
+/* ============ SCORECARD ============ */
+function setupScorecard() {
+  // Hero rows: top dimension + critical fix + presence (if Gemini gave one)
+  const dimsAll  = scorecard.filter(s => !/overall/i.test(s.name));
+  const heroRows = document.getElementById('hero-rows');
+  if (heroRows) {
+    const top      = [...dimsAll].sort((a,b) => b.score - a.score)[0];
+    const critical = [...dimsAll].sort((a,b) => a.score - b.score)[0];
+    const rows = [];
+    if (top) rows.push({ icon:'🏆', label:'TOP DIMENSION', text:`${top.name} · ${top.score}` });
+    if (critical && critical.score < 65) rows.push({ icon:'🚨', label:'CRITICAL FIX', text:`${critical.name} · ${critical.score}` });
+    if (typeof state.presence === 'number') rows.push({ icon:'🎙️', label:'PRESENCE (Gemini)', text:`${state.presence}/100` });
+    heroRows.innerHTML = rows.map(r => `
+      <div class="flex items-center gap-3 p-3 rounded-xl bg-white/10 backdrop-blur">
+        <span class="text-2xl">${r.icon}</span>
+        <div class="flex-1 min-w-0">
+          <p class="text-[11px] uppercase tracking-wider font-bold text-white/60">${r.label}</p>
+          <p class="text-[14px] font-bold truncate">${r.text}</p>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  // Hero tag — verdict-aware
+  const tagText = document.getElementById('hero-tag-text');
+  const v = (state.verdict || '').toLowerCase();
+  if (tagText) {
+    tagText.textContent = v.includes('build') ? "Build it — bones are good"
+                       : v.includes('maybe') ? "Maybe — needs sharpening"
+                       : v.includes('skip')  ? "Skip it — re-cut the wedge"
+                       : 'Idea Validator complete';
+  }
+
+  // Band summary chips (counts of Strong / Watch / Critical from live scores)
+  const bandWrap = document.getElementById('band-summary');
+  if (bandWrap) {
+    const counts = { strong:0, watch:0, critical:0 };
+    dimsAll.forEach(s => {
+      if (s.score >= 75) counts.strong++;
+      else if (s.score >= 55) counts.watch++;
+      else counts.critical++;
+    });
+    bandWrap.innerHTML = `
+      <div class="bg-gradient-to-br from-lily-100 to-lily-50 border border-lily-300 rounded-2xl p-4 text-center">
+        <p class="text-3xl mb-1">✅</p>
+        <p class="text-[32px] font-extrabold text-lily-700 leading-none">${counts.strong}</p>
+        <p class="text-[11px] uppercase tracking-wider font-bold text-lily-700 mt-1">Strong</p>
+        <p class="text-[10px] text-lily-700/70 mt-0.5">Score ≥ 75</p>
+      </div>
+      <div class="bg-gradient-to-br from-cream-200 to-cream-100 border border-pond-100 rounded-2xl p-4 text-center">
+        <p class="text-3xl mb-1">👀</p>
+        <p class="text-[32px] font-extrabold text-pond-700 leading-none">${counts.watch}</p>
+        <p class="text-[11px] uppercase tracking-wider font-bold text-pond-700 mt-1">Watch</p>
+        <p class="text-[10px] text-pond-700/70 mt-0.5">Score 55–74</p>
+      </div>
+      <div class="bg-gradient-to-br from-koi-100 to-koi-50 border border-koi-200 rounded-2xl p-4 text-center">
+        <p class="text-3xl mb-1">🚨</p>
+        <p class="text-[32px] font-extrabold text-koi-700 leading-none">${counts.critical}</p>
+        <p class="text-[11px] uppercase tracking-wider font-bold text-koi-700 mt-1">Critical</p>
+        <p class="text-[10px] text-koi-700/70 mt-0.5">Score &lt; 55</p>
+      </div>
+    `;
+  }
+
+  // Weakest callout — pull from coach.weakest when present
+  if (state.coachWeakest && (state.coachWeakest.title || state.coachWeakest.quote)) {
+    const wk = document.getElementById('weakest-callout');
+    document.getElementById('weakest-title').textContent = state.coachWeakest.title || state.weakArea || 'Weakest dimension';
+    document.getElementById('weakest-quote').textContent = state.coachWeakest.quote || '';
+    wk?.classList.remove('hidden');
+  }
+
+  // Render bars with band-aware colors, emojis, and YC-lens rationale (when AI returned one)
+  const wrap = document.getElementById('scorecard-bars');
+  wrap.innerHTML = scorecard.map((s, i) => {
+    const b = scoreBand(s.score);
+    const rationale = state.coachRationale?.[s.name];
+    return `
+      <div data-bar-row="${i}">
+        <div class="grid grid-cols-[28px,1fr,auto,auto] items-center gap-3">
+          <span class="text-[18px] leading-none">${s.icon}</span>
+          <div class="min-w-0">
+            <div class="flex items-center justify-between gap-2 mb-1">
+              <span class="text-[13px] font-semibold text-pond-900 truncate">${s.name}</span>
+            </div>
+            <div class="h-2 rounded-full bg-cream-200 overflow-hidden">
+              <div class="h-full ${b.bar} rounded-full transition-all duration-700 ease-out" data-bar-fill style="width:0%"></div>
+            </div>
+          </div>
+          <span class="text-[10px] font-bold ${b.text} ${b.bg} px-2 py-0.5 rounded-full whitespace-nowrap">${b.tag} ${b.label}</span>
+          <span class="text-[14px] font-extrabold ${b.text} tabular-nums w-12 text-right">${s.score}<span class="text-[10px] text-pond-700/50">/100</span></span>
+        </div>
+        ${rationale ? `<p class="text-[11.5px] text-pond-700/70 leading-snug mt-1.5 ml-[40px] italic">${escapeHtml(rationale)}</p>` : ''}
+      </div>
+    `;
+  }).join('');
+
+  // Stagger the bar fills
+  requestAnimationFrame(() => {
+    wrap.querySelectorAll('[data-bar-fill]').forEach((bar, i) => {
+      setTimeout(() => { bar.style.width = scorecard[i].score + '%'; }, 80 + i * 70);
+    });
+  });
+
+  // Count-up the hero score — uses the real Overall from the scorecard.
+  // Falls back to mean of dimensions if Overall entry is missing.
+  const heroEl = document.getElementById('hero-score');
+  if (heroEl) {
+    const overallEntry = scorecard.find(s => /overall/i.test(s.name));
+    const dimsOnly = scorecard.filter(s => !/overall/i.test(s.name));
+    const target = overallEntry && overallEntry.score
+      ? overallEntry.score
+      : (dimsOnly.length ? Math.round(dimsOnly.reduce((a, s) => a + s.score, 0) / dimsOnly.length) : 0);
+    heroEl.textContent = '0';
+    const start = performance.now();
+    const dur = 900;
+    function step(t) {
+      const p = Math.min(1, (t - start) / dur);
+      const eased = 1 - Math.pow(1 - p, 3); // easeOutCubic
+      heroEl.textContent = Math.round(eased * target);
+      if (p < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+}
+document.getElementById('score-continue').addEventListener('click', () => go('qa-intro'));
+document.getElementById('qa-start').addEventListener('click', async (e) => {
+  state.qaIndex = 0;
+  await awaitQaAudio(0, e.currentTarget);
+  go('qa-question');
+});
+
+/* ============ Q&A QUESTION ============ */
+let qaAudio = null;
+let qaTtsFishUnavailable = false;
+
+// In-flight Fish requests by index — single-flight per question. Both prefetch
+// and on-demand calls share the same promise so we never double-fetch.
+const qaTtsPromises = {};
+
+// Idempotent: returns a promise resolving to a blob URL (or null if Fish failed).
+function ensureQaQuestionAudio(idx) {
+  const q = qaQuestions[idx];
+  if (!q) return Promise.resolve(null);
+  if (state.qaTtsCache[idx]) return Promise.resolve(state.qaTtsCache[idx]);
+  if (qaTtsFishUnavailable) return Promise.resolve(null);
+  if (qaTtsPromises[idx]) return qaTtsPromises[idx];
+
+  qaTtsPromises[idx] = (async () => {
+    try {
+      const res = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: q.q })
+      });
+      if (!res.ok) {
+        console.warn('[qa-tts] Fish HTTP', res.status);
+        qaTtsFishUnavailable = true;
+        return null;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      state.qaTtsCache[idx] = url;
+      console.log(`[qa-tts] question ${idx + 1} ready, ${(blob.size/1024).toFixed(0)} KB`);
+      return url;
+    } catch (e) {
+      console.warn('[qa-tts] Fish error:', e?.message || e);
+      qaTtsFishUnavailable = true;
+      return null;
+    }
+  })();
+  return qaTtsPromises[idx];
+}
+
+// Warm all 3 questions in parallel — called once qaQuestions populates.
+function prefetchAllQaQuestionsAudio() {
+  if (qaTtsFishUnavailable) return;
+  qaQuestions.forEach((_, i) => ensureQaQuestionAudio(i));
+}
+
+// Plays the cached blob (or falls back to system voice). Assumes prefetch already
+// ran — won't trigger a fetch.
+function playQaQuestionAudio(idx) {
+  if (qaAudio) { try { qaAudio.pause(); } catch {} }
+  if ('speechSynthesis' in window) speechSynthesis.cancel();
+
+  const url = state.qaTtsCache[idx];
+  if (url) {
+    qaAudio = new Audio(url);
+    qaAudio.play().catch(e => console.warn('[qa-tts] play failed:', e));
+  } else {
+    // Fish unavailable — fall back to system voice. Q&A questions are short, so
+    // no crash risk like the long coach script.
+    if ('speechSynthesis' in window) {
+      const u = new SpeechSynthesisUtterance(qaQuestions[idx].q);
+      u.rate = 1;
+      speechSynthesis.speak(u);
+    }
+  }
+}
+
+// Old name kept for the Replay button — fetches lazily if cache somehow missed.
+async function speakQaQuestion(idx) {
+  await ensureQaQuestionAudio(idx);
+  playQaQuestionAudio(idx);
+}
+
+// Awaits TTS for `idx` while showing a loading state on `button`. Used by the
+// Start Q&A and Next Question handlers so the user only lands on the qa-question
+// screen when the audio is ready to play.
+async function awaitQaAudio(idx, button) {
+  if (state.qaTtsCache[idx] || qaTtsFishUnavailable) return;
+  const orig = button?.innerHTML;
+  if (button) {
+    button.disabled = true;
+    button.innerHTML = `
+      <svg class="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 1 1-6.219-8.56" stroke-linecap="round"/></svg>
+      <span>Sarah is preparing the question…</span>
+    `;
+  }
+  try {
+    await Promise.race([
+      ensureQaQuestionAudio(idx),
+      new Promise(r => setTimeout(() => r(null), 20000)) // 20s ceiling
+    ]);
+  } catch {/* race never rejects */}
+  if (button && orig != null) {
+    button.disabled = false;
+    button.innerHTML = orig;
+  }
+}
+
+async function setupQa() {
+  await ensureMicForQa();
+  const q = qaQuestions[state.qaIndex];
+  document.getElementById('qa-num').textContent = state.qaIndex + 1;
+  document.getElementById('qa-question-text').textContent = q.q;
+  document.querySelectorAll('[data-qa-dot]').forEach((d, i) => {
+    d.className = 'qa-dot w-2 h-2 rounded-full ' + (i <= state.qaIndex ? 'bg-pond-900' : 'bg-pond-300/40');
+  });
+  document.getElementById('qa-timer').textContent = '0:00';
+  document.getElementById('qa-rec-start').hidden = false;
+  document.getElementById('qa-rec-stop').hidden = true;
+  document.getElementById('qa-rec-redo').hidden = true;
+  const vis = document.getElementById('qa-vis');
+  vis.innerHTML = '';
+  for (let i = 0; i < 30; i++) { const b = document.createElement('span'); b.className = 'vis-bar w-1 bg-pond-300 rounded-sm'; b.style.height = '4px'; vis.appendChild(b); }
+
+  // Audio is pre-warmed by ensureQaQuestionAudio before the screen transition;
+  // play immediately so text + audio appear together.
+  setTimeout(() => playQaQuestionAudio(state.qaIndex), 150);
+
+  // While the user is hearing question N, kick off prefetch for question N+1
+  // so the next transition is also instant.
+  if (state.qaIndex + 1 < qaQuestions.length) ensureQaQuestionAudio(state.qaIndex + 1);
+}
+document.getElementById('qa-replay').addEventListener('click', () => speakQaQuestion(state.qaIndex));
+document.getElementById('qa-rec-start').addEventListener('click', () => {
+  state.qaStart = Date.now();
+  state.qaCurrentTranscript = '';
+  document.getElementById('qa-rec-start').hidden = true;
+  document.getElementById('qa-rec-stop').hidden = false;
+  document.getElementById('qa-rec-redo').hidden = false;
+
+  // Start live Web Speech transcription on the existing mic stream
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (SR) {
+    try {
+      const rec = new SR();
+      const langMap = { en: 'en-US', lt: 'lt-LT', mix: 'en-US' };
+      rec.lang = langMap[window.koiPondLang || 'en'] || 'en-US';
+      rec.continuous = true;
+      rec.interimResults = true;
+      rec.onresult = (ev) => {
+        let final = '';
+        let interim = '';
+        for (let i = ev.resultIndex; i < ev.results.length; i++) {
+          const r = ev.results[i];
+          if (r.isFinal) final += r[0].transcript + ' ';
+          else interim   += r[0].transcript;
+        }
+        if (final) state.qaCurrentTranscript += final;
+      };
+      rec.onerror = (e) => console.warn('[qa-asr]', e.error);
+      rec.start();
+      state.qaRecognizer = rec;
+    } catch (err) {
+      console.warn('[qa-asr] start failed:', err);
+    }
+  } else {
+    console.warn('[qa-asr] SpeechRecognition not supported in this browser');
+  }
+
+  state.qaTimerId = setInterval(() => {
+    const e = Math.floor((Date.now() - state.qaStart) / 1000);
+    const m = Math.floor(e / 60), s = e % 60;
+    document.getElementById('qa-timer').textContent = `${m}:${String(s).padStart(2,'0')}`;
+
+    if (state.analyser) {
+      state.analyser.getByteFrequencyData(state.visData);
+      const bars = document.getElementById('qa-vis').children;
+      for (let i = 0; i < bars.length; i++) {
+        const v = state.visData[i % state.visData.length] / 255;
+        bars[i].style.height = Math.max(4, v * 28) + 'px';
+        bars[i].classList.toggle('bg-koi-500', v > 0.2);
+        bars[i].classList.toggle('bg-pond-300', v <= 0.2);
+      }
+    }
+  }, 100);
+});
+
+function stopQaRecognizer() {
+  if (state.qaRecognizer) {
+    try { state.qaRecognizer.stop(); } catch {}
+    state.qaRecognizer = null;
+  }
+}
+
+document.getElementById('qa-rec-stop').addEventListener('click', async () => {
+  clearInterval(state.qaTimerId);
+  stopQaRecognizer();
+  // Give SR a tick to emit any final results
+  await new Promise(r => setTimeout(r, 400));
+  await gradeAndStoreQaTurn();
+  go('qa-feedback');
+});
+document.getElementById('qa-rec-redo').addEventListener('click', () => {
+  clearInterval(state.qaTimerId);
+  stopQaRecognizer();
+  state.qaCurrentTranscript = '';
+  setupQa();
+});
+
+/* Grade the just-finished Q&A turn — calls server /api/qa-grade. */
+async function gradeAndStoreQaTurn() {
+  const q = qaQuestions[state.qaIndex];
+  const answer = (state.qaCurrentTranscript || '').trim();
+  const turn = { position: state.qaIndex + 1, question: q.q, answer, scores: null, note: null };
+  try {
+    if (answer.split(/\s+/).filter(Boolean).length >= 5) {
+      const sc = state.scenario;
+      const res = await fetch('/api/qa-grade', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question:   q.q,
+          answer,
+          transcript: state.capturedTranscript || null,  // lets Claude flag pitch↔Q&A inconsistencies
+          language:   window.koiPondLang || 'en',
+          scenario: {
+            investor: sc?.investor || 'Sarah Chen — Partner @ Vanguard Capital',
+            title:    sc?.title    || state.scenarioTitle
+          }
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && !data.error && data.scores) {
+        turn.scores = data.scores;
+        turn.note   = data.note || null;
+      }
+    }
+  } catch (e) {
+    console.warn('[qa-grade] failed:', e?.message || e);
+  }
+  state.qaTurns[state.qaIndex] = turn;
+}
+
+/* ============ Q&A FEEDBACK ============ */
+function setupQaFeedback() {
+  const q = qaQuestions[state.qaIndex];
+  const turn = state.qaTurns[state.qaIndex] || {};
+  document.getElementById('qa-fb-num').textContent = state.qaIndex + 1;
+  document.getElementById('qa-fb-question').textContent = q.q;
+
+  // Real transcript from SpeechRecognition (or honest empty-state if nothing captured)
+  const answerEl = document.getElementById('qa-fb-answer');
+  if (turn.answer && turn.answer.trim()) {
+    answerEl.value = turn.answer;
+  } else {
+    answerEl.value = '(No answer captured — speech recognition may be unavailable or you stayed silent.)';
+  }
+
+  // Show real grades from /api/qa-grade. If the grader didn't run (too-short answer
+  // or API hiccup), show a clear "—" rather than fake numbers.
+  const s = turn.scores || {};
+  const fmt = (v) => (typeof v === 'number' ? v : '—');
+  document.getElementById('ev-direct').textContent  = fmt(s.direct);
+  document.getElementById('ev-evid').textContent    = fmt(s.evid);
+  document.getElementById('ev-clarity').textContent = fmt(s.clarity);
+  document.getElementById('ev-conf').textContent    = fmt(s.conf);
+  document.getElementById('ev-pers').textContent    = fmt(s.pers);
+  document.getElementById('qa-fb-note').textContent =
+    turn.note || (turn.answer ? 'Answer recorded — Shark didn\'t return a critique on this one.' : 'No answer captured to grade.');
+
+  const dots = document.getElementById('qa-fb-dots');
+  dots.innerHTML = '';
+  for (let i = 0; i < qaQuestions.length; i++) {
+    const d = document.createElement('span');
+    d.className = 'w-2 h-2 rounded-full ' + (i <= state.qaIndex ? 'bg-pond-900' : 'bg-pond-300/40');
+    dots.appendChild(d);
+  }
+
+  document.getElementById('qa-fb-cta').textContent = (state.qaIndex === qaQuestions.length - 1) ? 'Finish Session' : 'Next Question';
+}
+document.getElementById('qa-fb-next').addEventListener('click', async (e) => {
+  if (state.qaIndex < qaQuestions.length - 1) {
+    const next = state.qaIndex + 1;
+    // Wait for the next question's audio so it plays the moment the screen lands.
+    await awaitQaAudio(next, e.currentTarget);
+    state.qaIndex = next;
+    go('qa-question');
+  } else {
+    // Final step → aggregate scores + persist session
+    computeFinalScores();
+    await persistSession();
+    go('report');
+  }
+});
+
+/* ============ FINAL SCORE AGGREGATION ============ */
+function computeFinalScores() {
+  // Q&A score = average of avg-per-turn (each turn has direct/evid/clarity/conf/pers on a 0–10 scale)
+  const turnAvgs = state.qaTurns
+    .map(t => t && t.scores ? Object.values(t.scores).filter(n => typeof n === 'number') : [])
+    .filter(arr => arr.length > 0)
+    .map(arr => arr.reduce((a, b) => a + b, 0) / arr.length);
+  if (turnAvgs.length) {
+    // 0–10 → 0–100
+    state.qaScore = Math.round((turnAvgs.reduce((a, b) => a + b, 0) / turnAvgs.length) * 10);
+  } else {
+    state.qaScore = null;
+  }
+
+  // Total = pitch ⨯ 0.6 + qa ⨯ 0.4 (or pitch alone if no qa)
+  if (state.pitchScore != null && state.qaScore != null) {
+    state.totalScore = Math.round(state.pitchScore * 0.6 + state.qaScore * 0.4);
+  } else if (state.pitchScore != null) {
+    state.totalScore = state.pitchScore;
+  } else if (state.qaScore != null) {
+    state.totalScore = state.qaScore;
+  }
+
+  state.durationSec = state.elapsedMs ? Math.round(state.elapsedMs / 1000) : null;
+
+  // Update visible scorecard hero if user navigates back
+  const heroEl = document.querySelector('[data-scorecard-hero]');
+  if (heroEl && state.totalScore != null) heroEl.textContent = state.totalScore;
+}
+
+/* ============ SUPABASE PERSISTENCE ============ */
+async function persistSession() {
+  if (!window.koiPondSave) {
+    console.warn('[save] supabase saver not available — skipping persist');
+    return;
+  }
+  try {
+    const payload = {
+      scenarioId:    state.scenarioId,
+      scenarioTitle: state.scenarioTitle,
+      transcript:    state.finalTranscript || state.capturedTranscript || '',
+      durationSec:   state.durationSec,
+      pitchScore:    state.pitchScore,
+      qaScore:       state.qaScore,
+      totalScore:    state.totalScore,
+      weakArea:      state.weakArea,
+      presenceScore: state.presence,
+      verdict:       state.verdict,
+      audioUrl:      null,
+      scorecard:     state.coachScorecard || null,
+      coachFeedback: state.coachScript || null,
+      qa: state.qaTurns.filter(t => t && t.question).map((t, i) => ({
+        question: t.question,
+        answer:   t.answer || '',
+        scores:   t.scores || null,
+        note:     t.note   || null
+      }))
+    };
+    const saved = await window.koiPondSave(payload);
+    console.log('[save] session persisted:', saved?.id);
+    state.savedSessionId = saved?.id || null;
+
+    // Auto-submit to leaderboard. Helper checks the user's opt-in flag and the
+    // anti-gaming gates internally — if the user opted out or the run is too
+    // short, this is a no-op (but logs a friendly reason for debugging).
+    if (saved && window.koiPondSubmitToBoard) {
+      try {
+        const r = await window.koiPondSubmitToBoard(saved, payload.qa);
+        if (r?.written) {
+          console.log('[leaderboard] entry submitted, new best:', r.currentBest, 'prev:', r.previousBest);
+          state.leaderboardWritten = true;
+        } else {
+          console.log('[leaderboard] not written, reason:', r?.reason);
+        }
+      } catch (e) {
+        console.warn('[leaderboard] submit failed:', e?.message || e);
+      }
+    }
+  } catch (err) {
+    console.warn('[save] failed:', err?.message || err);
+  }
+}
+
+/* ============ REPORT ============ */
+function setupReport() {
+  // Numeric tiles
+  document.getElementById('rep-total').textContent = state.totalScore ?? '—';
+  document.getElementById('rep-pitch').textContent = state.pitchScore ?? '—';
+  document.getElementById('rep-qa').textContent    = state.qaScore    ?? '—';
+
+  // Meta line: scenario + duration
+  const dur = state.durationSec
+    ? `${Math.floor(state.durationSec/60)}:${String(state.durationSec%60).padStart(2,'0')}`
+    : '—';
+  document.getElementById('report-meta').textContent =
+    `${state.scenarioTitle || 'Free pitch'} · ${dur} pitch · saved automatically`;
+
+  // Personalize the headline if we have a first name in localStorage / supabase
+  // (auth-gate fills [data-user-firstname] elsewhere; we append it inline).
+  const suffix = document.querySelector('[data-user-firstname-suffix]');
+  if (suffix) {
+    const fn = document.querySelector('[data-user-firstname]')?.textContent;
+    suffix.textContent = fn ? `, ${fn}.` : '.';
+  }
+
+  // Verdict badge — pulled from coach.verdict if it landed
+  const v = (state.verdict || '').trim();
+  const card  = document.getElementById('rep-verdict-card');
+  const label = document.getElementById('rep-verdict-label');
+  const badge = document.getElementById('rep-verdict-badge');
+  if (card && v) {
+    label.textContent = v;
+    const norm = v.toLowerCase();
+    let cls = 'bg-pond-100 text-pond-700', dot = '●';
+    if (norm.includes('build')) { cls = 'bg-lily-100 text-lily-700'; dot = '✓'; }
+    else if (norm.includes('maybe')) { cls = 'bg-koi-100 text-koi-700'; dot = '~'; }
+    else if (norm.includes('skip'))  { cls = 'bg-pond-900 text-white'; dot = '✕'; }
+    badge.className = `shrink-0 inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-full ${cls}`;
+    badge.textContent = `${dot} ${v}`;
+    card.classList.remove('hidden');
+  } else {
+    card?.classList.add('hidden');
+  }
+
+  // Strong / Weak dimensions from the live scorecard (skip "Overall")
+  const dims = (state.coachScorecard || scorecard).filter(s => s && !/overall/i.test(s.name) && typeof s.score === 'number');
+  const strong = [...dims].sort((a,b) => b.score - a.score).slice(0, 3);
+  const weak   = [...dims].sort((a,b) => a.score - b.score).slice(0, 3);
+  const strongList = document.getElementById('rep-strong-list');
+  const weakList   = document.getElementById('rep-weak-list');
+  if (strongList) {
+    strongList.innerHTML = strong.length
+      ? strong.map(s => `<li class="check">${escapeHtml(s.name)} · <span class="font-extrabold tabular-nums">${s.score}</span><span class="text-pond-700/50">/100</span></li>`).join('')
+      : '<li class="text-pond-700/50">No scored dimensions returned.</li>';
+  }
+  if (weakList) {
+    weakList.innerHTML = weak.length
+      ? weak.map(s => `<li class="flex gap-2"><span class="text-koi-500 font-bold">·</span>${escapeHtml(s.name)} · <span class="font-extrabold tabular-nums">${s.score}</span><span class="text-pond-700/50">/100</span></li>`).join('')
+      : '<li class="text-pond-700/50">No scored dimensions returned.</li>';
+  }
+
+  // Q&A turns — list the actual questions asked + the average score per turn
+  const qaWrap = document.getElementById('rep-qa-list');
+  if (qaWrap) {
+    const turns = (state.qaTurns || []).filter(t => t && t.question);
+    if (turns.length) {
+      qaWrap.innerHTML = turns.map((t, i) => {
+        const sc = t.scores || {};
+        const vals = Object.values(sc).filter(x => typeof x === 'number');
+        const avg = vals.length ? Math.round((vals.reduce((a,b) => a + b, 0) / vals.length) * 10) : null;
+        const tag = avg == null ? '—'
+                  : avg >= 75 ? `${avg} · solid`
+                  : avg >= 55 ? `${avg} · wobble`
+                  :              `${avg} · weak`;
+        return `
+          <div class="flex items-start gap-3 p-3 rounded-lg bg-cream-100">
+            <span class="text-koi-600 font-bold shrink-0">Q${i+1}</span>
+            <div class="min-w-0 flex-1">
+              <p class="font-semibold text-pond-900">${escapeHtml(t.question)}</p>
+              ${t.note ? `<p class="text-[12.5px] text-pond-700/75 mt-1">${escapeHtml(t.note)}</p>` : ''}
+            </div>
+            <span class="shrink-0 text-[11px] font-bold tabular-nums text-pond-700">${tag}</span>
+          </div>
+        `;
+      }).join('');
+    } else {
+      qaWrap.innerHTML = '<p class="text-pond-700/50">No Q&A turns recorded.</p>';
+    }
+  }
+}
+
+document.getElementById('save-report').addEventListener('click', async e => {
+  const orig = e.target.textContent;
+  if (state.savedSessionId) {
+    e.target.textContent = '✓ Already saved';
+  } else {
+    e.target.textContent = 'Saving…';
+    await persistSession();
+    e.target.textContent = state.savedSessionId ? '✓ Saved' : '⚠ Save failed';
+  }
+  setTimeout(() => e.target.textContent = orig, 2200);
+});
+document.getElementById('report-again').addEventListener('click', () => location.reload());
+document.getElementById('report-improved').addEventListener('click', () => go('improved'));
+document.getElementById('improved-start').addEventListener('click', () => location.reload());
+
+/* ============ INIT ============ */
+go('mic');
+</script>
+
+<script>if(window.lucide)lucide.createIcons();</script>
+</body>
+</html>

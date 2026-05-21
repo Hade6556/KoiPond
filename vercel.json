@@ -1,0 +1,12 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "cleanUrls": true,
+  "trailingSlash": false,
+  "functions": {
+    "api/tts.js":              { "maxDuration": 30 },
+    "api/coach.js":            { "maxDuration": 60 },
+    "api/multimodal-coach.js": { "maxDuration": 60 },
+    "api/qa-grade.js":         { "maxDuration": 30 },
+    "api/qa-questions.js":     { "maxDuration": 30 }
+  }
+}

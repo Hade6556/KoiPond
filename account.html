@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Koi Pond — Account</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./assets/koi.css">
+<script>
+  tailwind.config = {
+    theme: { extend: {
+      fontFamily: { sans: ['Inter','system-ui','sans-serif'] },
+      colors: {
+        koi:  { 50:'#FFF4ED',100:'#FFDCC7',400:'#FF8F4A',500:'#FF6B1E',600:'#E55510',700:'#B53D08' },
+        pond: { 50:'#F5F5F2',100:'#E8E8E2',300:'#A3A39A',500:'#525248',700:'#1A1A14',900:'#0A0A06' },
+        lily: { 50:'#FFF8F2',100:'#FFE0CC',300:'#FFC4A0',400:'#FFA875',500:'#F08858',600:'#C76A40',700:'#9F522F' },
+        cream:{ 50:'#FDFCF5',100:'#FAF7EE',200:'#EFEAD9' }
+      }
+    } }
+  }
+</script>
+<style>
+  body { font-family:'Inter',system-ui,sans-serif; -webkit-font-smoothing:antialiased; background-color: #FAF7EE; position: relative; } body::before { content:""; position: fixed; inset:0; z-index:-1; pointer-events:none; background-image: linear-gradient(180deg, #C9DCEF 0%, #D6E4F2 22%, #E5ECF3 50%, #F0EEE5 78%, #FAF7EE 100%); }
+  .card-shadow { box-shadow: 0 1px 2px rgba(0,0,0,.03), 0 8px 30px -10px rgba(10,10,6,.08); }
+  .nav-link { display:flex; align-items:center; gap:.625rem; padding:.5rem .75rem; border-radius:.625rem; font-size:13.5px; font-weight:500; color:rgba(255,255,255,.7); transition:all .15s; }
+  .nav-link:hover { color:#fff; background:rgba(255,255,255,.08); }
+  .nav-link.active { background:#FF6B1E; color:#fff; }
+  .field-input { width:100%; background:#FAF7EE; border:1px solid #E8E8E2; border-radius:.625rem; padding:.625rem .85rem; font-size:13.5px; color:#0A0A06; transition:border-color .15s; }
+  .field-input:focus { outline:none; border-color:#3D6B5A; box-shadow:0 0 0 3px rgba(168,199,184,.3); }
+  .seg { display:flex; gap:.25rem; padding:.25rem; background:#FAF7EE; border:1px solid #E8E8E2; border-radius:999px; }
+  .seg button { padding:.4rem .8rem; border-radius:999px; font-size:12.5px; font-weight:500; color:#1A1A14cc; transition:all .15s; }
+  .seg button.active { background:#0A0A06; color:#fff; }
+  .switch { position:relative; width:38px; height:22px; background:#E8E8E2; border-radius:999px; cursor:pointer; transition:background .15s; }
+  .switch::after { content:""; position:absolute; top:2px; left:2px; width:18px; height:18px; background:#fff; border-radius:50%; transition:left .15s; box-shadow:0 1px 3px rgba(0,0,0,.15); }
+  .switch.on { background:#94944A; }
+  .switch.on::after { left:18px; }
+</style>
+<script type="module" src="./lib/auth-gate.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="text-pond-900">
+
+<div class="flex min-h-screen">
+
+  <aside class="hidden md:flex w-60 shrink-0 bg-[#0A0A06]/95 backdrop-blur-md border-r border-white/10 flex-col sticky top-0 h-screen z-30">
+    <a href="./index.html" class="px-5 pt-6 pb-5 flex items-center gap-2">
+      <img src="./assets/koi-pond-logo.svg" alt="Koi Pond" class="logo logo-dark logo-lg w-auto"/>
+    </a>
+    <nav class="flex-1 px-3 py-2 space-y-0.5">
+      <a href="./dashboard.html" class="nav-link"><i data-lucide="layout-dashboard" class="w-4 h-4"></i>Dashboard</a>
+      <a href="./practice.html" class="nav-link"><i data-lucide="play" class="w-4 h-4"></i>Practice</a>
+      <a href="./past-sessions.html" class="nav-link"><i data-lucide="clock" class="w-4 h-4"></i>Past Sessions</a>
+      <a href="./progress.html" class="nav-link"><i data-lucide="trending-up" class="w-4 h-4"></i>Progress</a>
+      <a href="./leaderboard.html" class="nav-link"><i data-lucide="trophy" class="w-4 h-4"></i>Leaderboard</a>
+      <a href="./account.html" class="nav-link active"><i data-lucide="user" class="w-4 h-4"></i>Account</a>
+    </nav>
+    <div class="p-3 border-t border-white/10 space-y-1">
+      <a href="./account.html" class="flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-white/10 transition">
+        <span data-user-avatar class="kp-avatar">U</span>
+        <div class="flex-1 min-w-0">
+          <p data-user-name class="text-[13px] font-semibold truncate text-white">…</p>
+          <p data-user-meta class="text-[11px] text-white/50 truncate">…</p>
+        </div>
+      </a>
+      <button data-signout class="w-full text-left px-2 py-1.5 rounded-lg text-[12px] text-white/65 hover:text-white hover:bg-white/10 transition inline-flex items-center gap-2">
+        <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
+        Sign out
+      </button>
+    </div>
+  </aside>
+
+  <main class="flex-1 min-w-0">
+    <div class="md:hidden flex items-center justify-between px-5 py-4 border-b border-white/10 bg-[#0A0A06]/95 backdrop-blur sticky top-0 z-20 text-white">
+      <a href="./dashboard.html" class="flex items-center gap-2">
+        <img src="./assets/koi-pond-logo.svg" alt="Koi Pond" class="logo logo-dark logo-md w-auto"/>
+      </a>
+      <span data-user-avatar class="kp-avatar">U</span>
+    </div>
+
+    <div class="max-w-3xl mx-auto px-5 sm:px-8 py-8 sm:py-10">
+      <!-- Back / forward nav -->
+      <nav class="flex items-center gap-1 mb-6">
+        <button onclick="history.back()" type="button" aria-label="Back"
+                class="w-8 h-8 rounded-full bg-[#0A0A06]/5 hover:bg-[#0A0A06]/10 text-pond-700 hover:text-pond-900 ring-1 ring-pond-100/40 flex items-center justify-center transition">
+          <i data-lucide="chevron-left" class="w-4 h-4"></i>
+        </button>
+        <button onclick="history.forward()" type="button" aria-label="Forward"
+                class="w-8 h-8 rounded-full bg-[#0A0A06]/5 hover:bg-[#0A0A06]/10 text-pond-700 hover:text-pond-900 ring-1 ring-pond-100/40 flex items-center justify-center transition">
+          <i data-lucide="chevron-right" class="w-4 h-4"></i>
+        </button>
+      </nav>
+
+
+      <header class="mb-7">
+        <p class="text-[12px] text-pond-700/60 mb-1">Account</p>
+        <h1 class="text-[28px] md:text-[32px] font-extrabold tracking-tight">Settings.</h1>
+        <p class="mt-1.5 text-[14px] text-pond-700/80">Profile, voice, and microphone preferences.</p>
+      </header>
+
+      <!-- Profile -->
+      <section class="bg-white rounded-2xl card-shadow p-6 mb-5">
+        <h2 class="text-[15px] font-extrabold tracking-tight mb-4">Profile</h2>
+        <div class="flex items-center gap-4 mb-5">
+          <span data-user-avatar class="kp-avatar kp-avatar-lg">U</span>
+          <div>
+            <p class="font-semibold text-[14px]" data-user-name>—</p>
+            <p class="text-[12px] text-pond-700/60"><span data-user-email>—</span> · <span data-user-meta>Founder</span></p>
+            <p class="text-[11px] text-pond-700/50 mt-1">Edit your profile below — saved straight to your account.</p>
+          </div>
+        </div>
+        <div class="grid sm:grid-cols-2 gap-4">
+          <div>
+            <label class="text-[11px] uppercase tracking-wider font-bold text-pond-700/60 block mb-1">Name</label>
+            <input id="profile-name" class="field-input" placeholder="Your name"/>
+          </div>
+          <div>
+            <label class="text-[11px] uppercase tracking-wider font-bold text-pond-700/60 block mb-1">Email</label>
+            <input id="profile-email" type="email" class="field-input" placeholder="you@company.com"/>
+          </div>
+          <div>
+            <label class="text-[11px] uppercase tracking-wider font-bold text-pond-700/60 block mb-1">Company</label>
+            <input id="profile-company" class="field-input" placeholder="Your company"/>
+          </div>
+          <div>
+            <label class="text-[11px] uppercase tracking-wider font-bold text-pond-700/60 block mb-1">Stage you're raising</label>
+            <select id="profile-stage" class="field-input">
+              <option value="pre-seed">Pre-seed</option>
+              <option value="seed">Seed</option>
+              <option value="series-a">Series A</option>
+              <option value="series-b">Series B+</option>
+            </select>
+          </div>
+        </div>
+      </section>
+
+      <!-- Language -->
+      <section class="bg-white rounded-2xl card-shadow p-6 mb-5">
+        <h2 class="text-[15px] font-extrabold tracking-tight mb-1">Language</h2>
+        <p class="text-[12.5px] text-pond-700/60 mb-4">Koi Pond transcribes and grades in your selected language. Mixed mode is built for pitching with English startup terms inside Lithuanian sentences.</p>
+        <div class="seg" data-lang>
+          <button class="active" data-l="en">English</button>
+          <button data-l="lt">Lithuanian</button>
+          <button data-l="mix">Mixed EN / LT</button>
+        </div>
+      </section>
+
+      <!-- Leaderboard opt-in -->
+      <section id="leaderboard" class="bg-white rounded-2xl card-shadow p-6 mb-5">
+        <h2 class="text-[15px] font-extrabold tracking-tight mb-1">Leaderboard</h2>
+        <p class="text-[12.5px] text-pond-700/60 mb-4">Show up on the public boards. Your scores stay private until you flip this on. Anti-grinding rules: only your single best score per scenario is kept, transcripts are de-duped, and 30s + 2 Q&A answers are required.</p>
+
+        <div class="grid sm:grid-cols-2 gap-4 mb-4">
+          <div>
+            <label class="text-[11px] uppercase tracking-wider font-bold text-pond-700/60 block mb-1">Public handle</label>
+            <input id="profile-handle" class="field-input" placeholder="e.g. mayap42"/>
+            <p id="handle-hint" class="text-[10.5px] text-pond-700/55 mt-1">3–20 chars, letters and digits only. Leave blank for "Anon".</p>
+          </div>
+          <div>
+            <label class="text-[11px] uppercase tracking-wider font-bold text-pond-700/60 block mb-1">Country (optional)</label>
+            <input id="profile-country" class="field-input" maxlength="2" placeholder="LT"/>
+            <p class="text-[10.5px] text-pond-700/55 mt-1">2-letter ISO code (e.g. US, LT, DE). Shown next to your handle.</p>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between py-2.5 border-t border-cream-200">
+          <div>
+            <p class="text-[13px] font-semibold">Show me on the leaderboard</p>
+            <p class="text-[11.5px] text-pond-700/60">When on, your best score per scenario is auto-submitted after each session.</p>
+          </div>
+          <button id="lb-toggle" class="switch" data-toggle data-leaderboard></button>
+        </div>
+      </section>
+
+      <!-- Voice & Feedback -->
+      <section class="bg-white rounded-2xl card-shadow p-6 mb-5">
+        <h2 class="text-[15px] font-extrabold tracking-tight mb-4">Voice &amp; feedback</h2>
+        <div class="grid sm:grid-cols-2 gap-4 mb-5">
+          <div>
+            <label class="text-[11px] uppercase tracking-wider font-bold text-pond-700/60 block mb-1">Preferred coach voice</label>
+            <select class="field-input">
+              <option>Calm · Female</option>
+              <option selected>Direct · Female</option>
+              <option>Calm · Male</option>
+              <option>Direct · Male</option>
+            </select>
+          </div>
+          <div>
+            <label class="text-[11px] uppercase tracking-wider font-bold text-pond-700/60 block mb-1">Default scenario type</label>
+            <select class="field-input">
+              <option>University Pitch</option>
+              <option>Hackathon Pitch</option>
+              <option>Angel Investor</option>
+              <option selected>VC Pitch</option>
+              <option>Demo Day</option>
+              <option>Hard Mode</option>
+            </select>
+          </div>
+        </div>
+        <div class="flex items-center justify-between py-2.5 border-t border-cream-200">
+          <div>
+            <p class="text-[13px] font-semibold">Play feedback automatically</p>
+            <p class="text-[11.5px] text-pond-700/60">When the coach feedback screen opens.</p>
+          </div>
+          <button class="switch on" data-toggle></button>
+        </div>
+        <div class="flex items-center justify-between py-2.5 border-t border-cream-200">
+          <div>
+            <p class="text-[13px] font-semibold">Speak investor questions out loud</p>
+            <p class="text-[11.5px] text-pond-700/60">Questions are read aloud during Q&amp;A.</p>
+          </div>
+          <button class="switch on" data-toggle></button>
+        </div>
+      </section>
+
+      <!-- Microphone -->
+      <section class="bg-white rounded-2xl card-shadow p-6 mb-5">
+        <h2 class="text-[15px] font-extrabold tracking-tight mb-4">Microphone</h2>
+        <div class="grid sm:grid-cols-2 gap-4 mb-5">
+          <div>
+            <label class="text-[11px] uppercase tracking-wider font-bold text-pond-700/60 block mb-1">Input device</label>
+            <select class="field-input">
+              <option selected>System default — MacBook Pro Microphone</option>
+              <option>AirPods Pro 2</option>
+              <option>External USB Mic</option>
+            </select>
+          </div>
+          <div>
+            <label class="text-[11px] uppercase tracking-wider font-bold text-pond-700/60 block mb-1">Input level</label>
+            <input type="range" min="0" max="100" value="72" class="w-full accent-koi-500"/>
+          </div>
+        </div>
+        <div class="flex items-center justify-between py-2.5 border-t border-cream-200">
+          <div>
+            <p class="text-[13px] font-semibold">Noise suppression</p>
+            <p class="text-[11.5px] text-pond-700/60">Smooth out background hum, keep speech crisp.</p>
+          </div>
+          <button class="switch on" data-toggle></button>
+        </div>
+        <div class="mt-4 flex flex-wrap items-center gap-3">
+          <button id="mic-test-btn" type="button" class="inline-flex items-center gap-1.5 text-[12.5px] font-semibold bg-cream-200 hover:bg-pond-100 text-pond-900 px-3.5 py-2 rounded-full transition">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+            <span id="mic-test-label">Run microphone test</span>
+          </button>
+          <div id="mic-meter" class="hidden flex items-end gap-0.5 h-6">
+            <span class="mic-bar w-1 bg-koi-500 rounded-full transition-all" style="height:8%"></span>
+            <span class="mic-bar w-1 bg-koi-500 rounded-full transition-all" style="height:8%"></span>
+            <span class="mic-bar w-1 bg-koi-500 rounded-full transition-all" style="height:8%"></span>
+            <span class="mic-bar w-1 bg-koi-500 rounded-full transition-all" style="height:8%"></span>
+            <span class="mic-bar w-1 bg-koi-500 rounded-full transition-all" style="height:8%"></span>
+            <span class="mic-bar w-1 bg-koi-500 rounded-full transition-all" style="height:8%"></span>
+            <span class="mic-bar w-1 bg-koi-500 rounded-full transition-all" style="height:8%"></span>
+            <span class="mic-bar w-1 bg-koi-500 rounded-full transition-all" style="height:8%"></span>
+            <span class="mic-bar w-1 bg-koi-500 rounded-full transition-all" style="height:8%"></span>
+            <span class="mic-bar w-1 bg-koi-500 rounded-full transition-all" style="height:8%"></span>
+            <span class="mic-bar w-1 bg-koi-500 rounded-full transition-all" style="height:8%"></span>
+            <span class="mic-bar w-1 bg-koi-500 rounded-full transition-all" style="height:8%"></span>
+          </div>
+          <p id="mic-test-status" class="text-[11.5px] text-pond-700/70"></p>
+        </div>
+      </section>
+
+      <!-- Danger zone -->
+      <section class="bg-white rounded-2xl card-shadow p-6 mb-5 border border-koi-100">
+        <h2 class="text-[15px] font-extrabold tracking-tight mb-2 text-koi-700">Danger zone</h2>
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p class="text-[13px] font-semibold">Delete account</p>
+            <p class="text-[11.5px] text-pond-700/60 max-w-md">Permanently remove your sessions, recordings, transcripts, and reports. This cannot be undone.</p>
+          </div>
+          <button class="text-[12.5px] font-semibold bg-koi-50 hover:bg-koi-100 text-koi-700 border border-koi-100 px-4 py-2 rounded-full transition">Delete account</button>
+        </div>
+      </section>
+
+      <!-- Save -->
+      <div class="flex justify-end gap-2">
+        <button class="text-[13px] font-medium text-pond-700/70 hover:text-pond-900 px-4 py-2.5">Cancel</button>
+        <button id="save-btn" class="inline-flex items-center gap-2 bg-koi-500 hover:bg-koi-600 text-pond-900 text-[14px] font-semibold px-5 py-2.5 rounded-full transition shadow-[0_8px_22px_-6px_rgba(255,107,30,0.6)]">
+          Save changes
+        </button>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<script type="module">
+  import { getProfile, getUser, updateProfile, updateEmail } from './lib/supabase.js';
+
+  /* ---------- Toggle switches (UI-only) ---------- */
+  document.querySelectorAll('[data-toggle]').forEach(t => {
+    t.addEventListener('click', () => t.classList.toggle('on'));
+  });
+
+  /* ---------- Load profile on mount ---------- */
+  const $name    = document.getElementById('profile-name');
+  const $email   = document.getElementById('profile-email');
+  const $company = document.getElementById('profile-company');
+  const $stage   = document.getElementById('profile-stage');
+  const $handle  = document.getElementById('profile-handle');
+  const $country = document.getElementById('profile-country');
+  const $lbToggle = document.getElementById('lb-toggle');
+  const $save    = document.getElementById('save-btn');
+  const $langBtns = document.querySelectorAll('[data-lang] button');
+
+  let currentEmail = '';
+
+  const profile = await getProfile().catch(() => null);
+  const user    = await getUser().catch(() => null);
+
+  if (profile) {
+    if ($name)    $name.value    = profile.name    || '';
+    if ($company) $company.value = profile.company || '';
+    if ($stage && profile.stage) $stage.value = profile.stage;
+    const lang = profile.language || 'en';
+    $langBtns.forEach(b => b.classList.toggle('active', b.dataset.l === lang));
+    if ($handle)  $handle.value   = profile.display_handle || '';
+    if ($country) $country.value  = profile.country || '';
+    if ($lbToggle) $lbToggle.classList.toggle('on', !!profile.leaderboard_opt_in);
+  }
+  if (user) {
+    currentEmail = user.email || '';
+    if ($email) $email.value = currentEmail;
+  }
+
+  // Live handle validation: alphanum + 3–20 chars (or empty)
+  function validHandle(s) {
+    if (!s) return true;
+    return /^[a-z0-9]{3,20}$/i.test(s);
+  }
+  $handle?.addEventListener('input', () => {
+    const ok = validHandle($handle.value.trim());
+    document.getElementById('handle-hint').textContent = ok
+      ? '3–20 chars, letters and digits only. Leave blank for "Anon".'
+      : '⚠ Handle must be 3–20 chars, letters and digits only.';
+    document.getElementById('handle-hint').className = ok
+      ? 'text-[10.5px] text-pond-700/55 mt-1'
+      : 'text-[10.5px] text-koi-700 mt-1';
+  });
+
+  /* ---------- Language segmented control ---------- */
+  $langBtns.forEach(b => {
+    b.addEventListener('click', () => {
+      $langBtns.forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+    });
+  });
+
+  /* ---------- Save → Supabase ---------- */
+  function selectedLanguage() {
+    const active = document.querySelector('[data-lang] button.active');
+    return active?.dataset.l || 'en';
+  }
+
+  $save.addEventListener('click', async () => {
+    const orig = $save.textContent.trim();
+    $save.disabled = true;
+    $save.textContent = 'Saving…';
+    try {
+      const handle = ($handle?.value || '').trim();
+      if (handle && !validHandle(handle)) throw new Error('Handle must be 3–20 chars, letters and digits only.');
+      await updateProfile({
+        name:               $name.value.trim()    || null,
+        company:            $company.value.trim() || null,
+        stage:              $stage.value,
+        language:           selectedLanguage(),
+        display_handle:     handle || null,
+        country:            ($country?.value || '').trim().toUpperCase().slice(0, 2) || null,
+        leaderboard_opt_in: !!$lbToggle?.classList.contains('on'),
+      });
+      // Email is in auth.users — only update if changed (triggers confirmation flow)
+      const newEmail = $email.value.trim();
+      if (newEmail && newEmail !== currentEmail) {
+        await updateEmail(newEmail);
+        $save.textContent = '✓ Saved · check email to confirm';
+      } else {
+        $save.textContent = '✓ Saved';
+      }
+      try { localStorage.setItem('koipond-lang', selectedLanguage()); } catch {}
+    } catch (err) {
+      console.error('[account] save failed:', err);
+      $save.textContent = '⚠ Save failed';
+    } finally {
+      setTimeout(() => {
+        $save.textContent = orig;
+        $save.disabled = false;
+      }, 2400);
+    }
+  });
+
+  /* ---------- Mic test — real getUserMedia + audio meter ---------- */
+  const $micBtn    = document.getElementById('mic-test-btn');
+  const $micLabel  = document.getElementById('mic-test-label');
+  const $micMeter  = document.getElementById('mic-meter');
+  const $micStatus = document.getElementById('mic-test-status');
+  const $bars      = $micMeter ? Array.from($micMeter.querySelectorAll('.mic-bar')) : [];
+  let micCtx = null, micStream = null, micAnalyser = null, micRaf = null;
+
+  function stopMicTest() {
+    if (micRaf) cancelAnimationFrame(micRaf);
+    micRaf = null;
+    if (micAnalyser) micAnalyser.disconnect();
+    micAnalyser = null;
+    if (micCtx && micCtx.state !== 'closed') micCtx.close().catch(()=>{});
+    micCtx = null;
+    if (micStream) micStream.getTracks().forEach(t => t.stop());
+    micStream = null;
+    $micMeter?.classList.add('hidden');
+    $bars.forEach(b => b.style.height = '8%');
+    $micLabel.textContent = 'Run microphone test';
+  }
+
+  async function startMicTest() {
+    try {
+      $micLabel.textContent = 'Requesting…';
+      micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      micCtx = new AudioCtx();
+      const src = micCtx.createMediaStreamSource(micStream);
+      micAnalyser = micCtx.createAnalyser();
+      micAnalyser.fftSize = 256;
+      src.connect(micAnalyser);
+      const buf = new Uint8Array(micAnalyser.frequencyBinCount);
+      $micMeter.classList.remove('hidden');
+      $micLabel.textContent = 'Stop';
+      $micStatus.textContent = 'Speak into your mic — bars should react.';
+      const draw = () => {
+        micAnalyser.getByteFrequencyData(buf);
+        // Slice the buffer evenly across bars
+        const step = Math.floor(buf.length / $bars.length);
+        let max = 0;
+        $bars.forEach((bar, i) => {
+          let slice = 0;
+          for (let j = i*step; j < (i+1)*step; j++) slice = Math.max(slice, buf[j]);
+          const pct = Math.min(100, Math.round((slice / 255) * 100));
+          bar.style.height = Math.max(8, pct) + '%';
+          max = Math.max(max, pct);
+        });
+        if (max < 4 && $micStatus) $micStatus.textContent = 'Mic open but silent — try speaking.';
+        micRaf = requestAnimationFrame(draw);
+      };
+      draw();
+    } catch (err) {
+      console.error('[mic-test]', err);
+      $micStatus.textContent = err.name === 'NotAllowedError'
+        ? 'Mic access blocked. Allow it in your browser settings.'
+        : 'Mic test failed: ' + (err.message || err.name);
+      stopMicTest();
+    }
+  }
+
+  $micBtn?.addEventListener('click', () => {
+    if (micStream) stopMicTest();
+    else startMicTest();
+  });
+  window.addEventListener('beforeunload', stopMicTest);
+</script>
+
+<script>if(window.lucide)lucide.createIcons();</script>
+</body>
+</html>
