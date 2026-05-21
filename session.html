@@ -1540,49 +1540,76 @@ function startLivePitch() {
       console.warn('[REC] audio MediaRecorder unavailable:', e);
     }
 
-    // 2) Camera recorder — VIDEO ONLY (audio mux failed silently in some browsers
-    //    and produced no blob). Gemini reads body language fine from silent video;
-    //    audio analysis lives on the transcript side.
-    state.camChunks = [];
+    // 2) Camera frame sampler — REPLACES the old camera video recorder.
+    //    We can't ship a multi-MB WebM through Vercel (4.5 MB POST body limit),
+    //    so instead we grab small JPEG keyframes live during the pitch and send
+    //    a tiny batch to Gemini at the end. Body-language signal Gemini cares
+    //    about (eye contact, posture, reading-from-script, presence) survives
+    //    fine at sparse frames; we lose continuous motion but gain shipability.
+    state.camFrames = [];
     state.camRecorderError = null;
     if (state.camStream) {
-      try {
-        const videoOnly = new MediaStream(state.camStream.getVideoTracks());
-        state.camRecorder = new MediaRecorder(videoOnly, {
-          mimeType: pickMime(['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm']),
-          videoBitsPerSecond: 500_000
-        });
-        state.camRecorder.ondataavailable = e => { if (e.data.size) state.camChunks.push(e.data); };
-        state.camRecorder.onerror = e => {
-          state.camRecorderError = e.error?.message || 'recorder error';
-          console.warn('[REC] camera onerror:', e);
-        };
-        state.camRecorder.start(1000);
-        console.log('[REC] camera started, mime:', state.camRecorder.mimeType);
-      } catch (e) {
-        state.camRecorderError = e.message || String(e);
-        console.warn('[REC] camera MediaRecorder failed:', e);
-      }
+      startFrameSampler();
+      console.log('[FRAMES] sampler started');
     } else {
       state.camRecorderError = 'no camStream — camera permission not granted';
     }
 
-    // 3) Screen recorder — silent, captures slide context for the coach
-    state.screenChunks = [];
-    if (state.screenStream) {
-      try {
-        state.screenRecorder = new MediaRecorder(state.screenStream, {
-          mimeType: pickMime(['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm']),
-          videoBitsPerSecond: 400_000
-        });
-        state.screenRecorder.ondataavailable = e => { if (e.data.size) state.screenChunks.push(e.data); };
-        state.screenRecorder.start(1000);
-        console.log('[REC] screen started, mime:', state.screenRecorder.mimeType);
-      } catch (e) {
-        console.warn('[REC] screen MediaRecorder failed:', e);
-      }
-    }
+    // Screen recorder removed: slide deck thumbnails come from the upload step
+    // (state.deck.thumbnails) and are already sent inline as image parts. A
+    // separate screen recording was redundant and contributed to the 413.
   }, 400);
+}
+
+/* Live frame sampler — captures JPEG keyframes from camStream during the pitch.
+   Pushes {t: ms_since_start, b64} into state.camFrames. Tuned to keep the
+   eventual POST under Vercel's 4.5 MB body cap: 480px JPEG q=0.6 ≈ 30-60 KB
+   per frame, sampled every 8s → ~10 frames for a 60s pitch, ~25 for a 3-min
+   pitch. Total payload ~1.2 MB worst case. */
+function startFrameSampler() {
+  const video = document.createElement('video');
+  video.srcObject  = state.camStream;
+  video.muted      = true;
+  video.playsInline = true;
+  video.play().catch(e => console.warn('[FRAMES] video play:', e));
+  state.frameSamplerVideo = video;
+
+  const canvas = document.createElement('canvas');
+  const ctx    = canvas.getContext('2d');
+  const TARGET_W = 480;
+
+  const grab = () => {
+    if (state.pitchEnded) return;
+    if (!video.videoWidth) return; // not yet primed
+    const ratio = video.videoHeight / video.videoWidth;
+    canvas.width  = TARGET_W;
+    canvas.height = Math.round(TARGET_W * ratio);
+    try {
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+      const b64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
+      state.camFrames.push({ t: Date.now() - state.startedAt, b64 });
+      console.log(`[FRAMES] #${state.camFrames.length} @ ${Math.round((Date.now() - state.startedAt)/1000)}s · ${(b64.length * 0.75 / 1024).toFixed(0)} KB`);
+    } catch (e) {
+      console.warn('[FRAMES] grab failed:', e);
+    }
+  };
+
+  // First frame after 2s (let the user settle), then every 8s.
+  state.frameSamplerInitTimer = setTimeout(() => {
+    grab();
+    state.frameSamplerInterval = setInterval(grab, 8000);
+  }, 2000);
+}
+
+function stopFrameSampler() {
+  if (state.frameSamplerInitTimer) { clearTimeout(state.frameSamplerInitTimer); state.frameSamplerInitTimer = null; }
+  if (state.frameSamplerInterval)  { clearInterval(state.frameSamplerInterval);  state.frameSamplerInterval  = null; }
+  if (state.frameSamplerVideo) {
+    try { state.frameSamplerVideo.pause(); } catch (e) {}
+    state.frameSamplerVideo.srcObject = null;
+    state.frameSamplerVideo = null;
+  }
 }
 
 function pickMime(candidates) {
@@ -1706,8 +1733,12 @@ function endLivePitch(auto) {
 
   try { state.recognition?.stop(); } catch (e) {}
 
-  // Stop all three recorders. Capture the blobs once 'stop' fires so the
-  // last chunk lands in our arrays before we build the Blob.
+  // Stop the audio recorder (still buffered for potential transcript fallback)
+  // and the live camera frame sampler. Frames are already in state.camFrames
+  // by the time we get here — no async finalize needed for them.
+  stopFrameSampler();
+  console.log(`[FRAMES] sampler stopped · ${state.camFrames?.length || 0} frames captured`);
+
   const stopRec = (recorder, chunks, key) => new Promise(resolve => {
     if (!recorder || recorder.state === 'inactive') return resolve(null);
     recorder.addEventListener('stop', () => {
@@ -1722,14 +1753,12 @@ function endLivePitch(auto) {
     try { recorder.stop(); } catch (e) { resolve(null); }
   });
 
-  // Expose the finalize promise so /api/multimodal-coach can await blob readiness
-  // explicitly instead of guessing with a sleep loop.
+  // Only the audio recorder is async-finalizing now; preserved as a Promise
+  // so fetchVisualAnalysis's await chain stays uniform.
   state.recordersFinalized = Promise.all([
-    stopRec(state.recorder,       state.recBlobs,    'audio'),
-    stopRec(state.camRecorder,    state.camChunks,   'camera'),
-    stopRec(state.screenRecorder, state.screenChunks,'screen')
+    stopRec(state.recorder, state.recBlobs, 'audio')
   ]);
-  state.recordersFinalized.then(() => console.log('[REC] all recorders finalized'));
+  state.recordersFinalized.then(() => console.log('[REC] audio recorder finalized'));
 
   // Release mic, camera and screen — they all stop fighting the audio output
   if (state.mediaStream)   { state.mediaStream.getTracks().forEach(t => { try { t.stop(); } catch (e) {} }); state.mediaStream = null; }
@@ -1750,19 +1779,7 @@ function endLivePitch(auto) {
   go('processing');
 }
 
-/* ============ MULTIMODAL UPLOAD (camera video → Gemini) ============ */
-async function blobToBase64(blob) {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => {
-      const s = r.result.toString();
-      resolve(s.slice(s.indexOf(',') + 1));
-    };
-    r.onerror = reject;
-    r.readAsDataURL(blob);
-  });
-}
-
+/* ============ MULTIMODAL ANALYSIS (live frames → Gemini) ============ */
 async function fetchVisualAnalysis() {
   // If the user explicitly chose audio-only mode (didn't grant camera), skip
   // the Gemini call entirely — it's not a failure, it's a chosen mode.
@@ -1771,36 +1788,26 @@ async function fetchVisualAnalysis() {
     return { __error: 'audio_only', __reason: 'camera was not granted' };
   }
 
-  // Wait for the recorders to finish flushing their last chunk. With a hard
-  // ceiling so a stuck recorder doesn't hang the whole flow.
-  if (state.recordersFinalized) {
-    try {
-      await Promise.race([
-        state.recordersFinalized,
-        new Promise((_, rej) => setTimeout(() => rej(new Error('recorder_finalize_timeout')), 15000))
-      ]);
-    } catch (e) {
-      console.warn('[multimodal] recorder finalize wait:', e.message);
-    }
+  const frames = state.camFrames || [];
+  // Floor: at least 3 frames — anything less means the pitch was so short the
+  // sampler barely ran. Matches the spirit of the old "clip too short" check.
+  if (frames.length < 3) {
+    console.warn('[multimodal] not enough camera frames:', frames.length);
+    return { __error: 'insufficient_video', __reason: `only ${frames.length} keyframes — pitch was too short` };
   }
-  const cam = state.captures?.camera;
-  if (!cam) {
-    console.warn('[multimodal] no camera blob — skipping Gemini call');
-    return { __error: 'insufficient_video', __reason: 'no camera recording captured (recorder may not have flushed)' };
+
+  // Cap total inline payload. Vercel rejects POST bodies >4.5 MB before our
+  // handler runs. Frames are ~30–60 KB each → soft cap at 30 frames keeps the
+  // base64-encoded body well under 3 MB even with JSON overhead.
+  const MAX_FRAMES = 30;
+  const sentFrames = frames.length > MAX_FRAMES
+    ? frames.filter((_, i) => i % Math.ceil(frames.length / MAX_FRAMES) === 0).slice(0, MAX_FRAMES)
+    : frames;
+  if (sentFrames.length < frames.length) {
+    console.log(`[multimodal] downsampled ${frames.length} → ${sentFrames.length} frames`);
   }
-  // Floor: ~400 KB ≈ 5s of usable webm at our bitrate
-  if (cam.size < 400 * 1024) {
-    console.warn('[multimodal] camera blob too small:', cam.size);
-    return { __error: 'insufficient_video', __reason: `clip only ${(cam.size/1024).toFixed(0)} KB` };
-  }
+
   try {
-    const camera_b64 = await blobToBase64(cam);
-    let screen_b64;
-    if (state.captures.screen && cam.size + state.captures.screen.size < 16 * 1024 * 1024) {
-      screen_b64 = await blobToBase64(state.captures.screen);
-    } else if (state.captures.screen) {
-      console.warn('[multimodal] dropping screen blob to stay under inline cap');
-    }
     // Bundle deck thumbnails (if a deck was uploaded) so Gemini can critique them
     const slides = state.deck?.thumbnails?.length
       ? state.deck.thumbnails
@@ -1815,8 +1822,7 @@ async function fetchVisualAnalysis() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        camera_b64,
-        screen_b64,
+        camera_frames: sentFrames,
         transcript: state.capturedTranscript,
         slides,
         timings,

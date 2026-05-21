@@ -6,12 +6,13 @@ import {
   languageDirective
 } from './_shared.js';
 
-// IMPORTANT: Vercel's platform body limit is 4.5 MB on Hobby & Pro
-// (Enterprise can lift it). The original Node server allowed 40 MB. Anything
-// larger than ~4.5 MB will be rejected by the platform with HTTP 413 BEFORE
-// this function executes — no code change can fix that. Future work: have the
-// browser upload videos directly to Supabase Storage and POST a signed URL
-// here instead of inline base64. For now this works for short clips only.
+// Vercel's POST body cap is 4.5 MB on Hobby & Pro. We used to inline a full
+// WebM camera recording (multi-MB) and got rejected with HTTP 413 before this
+// handler ran. The browser now samples small JPEG keyframes during the pitch
+// and POSTs an array of {t, b64} — ~30 frames × ~50 KB ≈ 1.5 MB max, well
+// inside the limit. Gemini analyzes posture, eye contact, reading-from-script
+// etc. fine from a sparse frame sequence; we trade continuous motion for
+// shipability on serverless.
 export const config = {
   api: {
     bodyParser: { sizeLimit: '4.5mb' }
@@ -29,40 +30,47 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { camera_b64, screen_b64, transcript, scenario, slides, timings, language } = req.body || {};
+    const { camera_frames, transcript, scenario, slides, timings, language } = req.body || {};
     const langDirective = languageDirective(language);
 
-    if (!camera_b64) {
-      res.status(200).json({ error: 'insufficient_video', message: 'No camera recording was captured.' });
-      return;
-    }
-    const camBytes = Math.ceil(camera_b64.length * 0.75);
-    if (camBytes < 400 * 1024) {
+    const frames = Array.isArray(camera_frames)
+      ? camera_frames.filter(f => f && typeof f.b64 === 'string' && f.b64.length > 0)
+      : [];
+
+    if (frames.length < 3) {
       res.status(200).json({
         error: 'insufficient_video',
-        message: `Camera clip too short to analyze (${(camBytes/1024).toFixed(0)} KB). Pitch for at least 30 seconds with the camera on.`
+        message: `Only ${frames.length} keyframes received. Pitch for at least 30 seconds with the camera on.`
       });
       return;
     }
-    if (camBytes > 18 * 1024 * 1024) {
-      res.status(413).json({ error: `Camera video too large (${(camBytes/1024/1024).toFixed(1)}MB). Inline limit is ~18MB.` });
-      return;
-    }
 
-    const parts = [
-      { inline_data: { mime_type: 'video/webm', data: camera_b64 } }
-    ];
-    let runningInline = camBytes;
+    // Cap on server side too — protects Gemini from a misbehaving client and
+    // keeps total inline part bytes well under Gemini's 20 MB request ceiling.
+    const MAX_FRAMES_SERVER = 32;
+    const capped = frames.length > MAX_FRAMES_SERVER
+      ? frames.filter((_, i) => i % Math.ceil(frames.length / MAX_FRAMES_SERVER) === 0).slice(0, MAX_FRAMES_SERVER)
+      : frames;
 
-    if (screen_b64) {
-      const scrBytes = Math.ceil(screen_b64.length * 0.75);
-      if (runningInline + scrBytes < 17 * 1024 * 1024) {
-        parts.push({ inline_data: { mime_type: 'video/webm', data: screen_b64 } });
-        runningInline += scrBytes;
-      } else {
-        console.warn('[Gemini] dropping screen video to fit inline budget:', (scrBytes/1024/1024).toFixed(1) + 'MB');
+    // Sort by timestamp so Gemini sees the pitch in temporal order regardless
+    // of how the client packed them.
+    capped.sort((a, b) => (a.t || 0) - (b.t || 0));
+
+    const parts = [];
+    let runningInline = 0;
+    const frameTimes = [];
+
+    for (const f of capped) {
+      const fBytes = Math.ceil(f.b64.length * 0.75);
+      if (runningInline + fBytes > 18 * 1024 * 1024) {
+        console.warn('[Gemini] frame budget hit, dropping remaining frames');
+        break;
       }
+      parts.push({ inline_data: { mime_type: 'image/jpeg', data: f.b64 } });
+      runningInline += fBytes;
+      frameTimes.push(Math.round((f.t || 0) / 1000));
     }
+    console.log(`[Gemini] sending ${parts.length} camera frames at t=${frameTimes.join(',')}s · ${(runningInline/1024/1024).toFixed(2)}MB`);
 
     const slideList = Array.isArray(slides) ? slides.filter(s => s && s.b64).slice(0, 12) : [];
     const sentSlides = [];
@@ -75,8 +83,11 @@ export default async function handler(req, res) {
     }
     console.log('[Gemini] sending', sentSlides.length, 'slides:', sentSlides);
 
+    const frameContext = frameTimes.length
+      ? `\nThe first ${frameTimes.length} attached images are CAMERA KEYFRAMES of the founder taken during the pitch at timestamps (seconds from start): ${frameTimes.join(', ')}. Read posture, eye contact, reading-from-script, and overall presence from this sparse sequence — motion is unavailable, but composition is.`
+      : '';
     const slideContext = sentSlides.length
-      ? `\nThe founder is presenting a slide deck. ${sentSlides.length} slide thumbnails are attached as images, in order (pages ${sentSlides.join(', ')}). Critique each slide individually in slide_analysis.`
+      ? `\nThe ${sentSlides.length} images AFTER the camera frames are SLIDE THUMBNAILS from the founder's deck, in order (pages ${sentSlides.join(', ')}). Critique each slide individually in slide_analysis.`
       : '';
     const timingContext = (timings && timings.length)
       ? `\nSlide navigation timing (ms from pitch start): ${timings.map(t => `p${t.page}@${Math.round(t.t/1000)}s`).join(', ')}.`
@@ -93,9 +104,9 @@ Style: ${scenario?.style || 'Direct · interruptive'}
 <transcript>
 ${(transcript || '(no transcript)').slice(0, 4000)}
 </transcript>
-${slideContext}${timingContext}
+${frameContext}${slideContext}${timingContext}
 
-Analyze the founder's pitch DELIVERY based on the video(s) and any slide thumbnails above. Return your structured visual feedback as JSON. Start with { immediately.`
+Analyze the founder's pitch DELIVERY based on the camera keyframes, the transcript, and any slide thumbnails above. Return your structured visual feedback as JSON. Start with { immediately.`
     });
 
     const callGemini = async (model) => {
