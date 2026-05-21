@@ -7,6 +7,6 @@
     "node": "20.x"
   },
   "scripts": {
-    "dev": "node server.js"
+    "dev": "node scripts/dev-server.js"
   }
 }
