@@ -181,10 +181,12 @@ p { line-height: 1.55; }
               filter    320ms cubic-bezier(0.22, 1, 0.36, 1);
   will-change: transform;
 }
-.logo-sm { height: 2.5rem; }    /* 40px */
-.logo-md { height: 3.5rem; }    /* 56px */
-.logo-lg { height: 22rem; }     /* 352px — hero-scale brand presence */
-.logo-xl { height: 7rem;   }    /* 112px — alt hero / footer */
+.logo-sm  { height: 2.5rem; }   /* 40px */
+.logo-md  { height: 3.5rem; }   /* 56px */
+.logo-lg  { height: 22rem;  }   /* 352px — hero-scale brand presence */
+.logo-xl  { height: 7rem;   }   /* 112px — alt hero / footer */
+.logo-nav { height: 2.5rem; }   /* 40px mobile / 48px desktop — navbar */
+@media (min-width: 768px) { .logo-nav { height: 3rem; } }
 
 /* Dark-context variant — flattens logo to white silhouette */
 .logo-dark { filter: brightness(0) invert(1); }
