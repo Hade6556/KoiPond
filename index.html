@@ -1214,6 +1214,16 @@
   };
 
   (function () {
+    // Temporary kill-switch: hides every auth/signup entry point on the landing
+    // page while email delivery is gated by Supabase's built-in SMTP rate limit.
+    // Flip back to true once custom SMTP is configured.
+    const AUTH_ENABLED = false;
+    if (!AUTH_ENABLED) {
+      const sel = '[data-cta="signup"], [data-modal="signin"], a[href$="dashboard.html"]';
+      document.querySelectorAll(sel).forEach(el => el.classList.add('hidden'));
+      return;
+    }
+
     /* ---------- Auth modal ---------- */
     const modal = document.getElementById('auth-modal');
     const form  = modal.querySelector('[data-form]');
