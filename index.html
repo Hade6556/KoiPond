@@ -266,7 +266,7 @@
   <div class="flex items-center justify-between gap-4 pointer-events-auto">
     <!-- Free-floating logo, no container. Fades out as user scrolls down. -->
     <a id="brand-logo" href="#top" class="block shrink-0 transition-[opacity,transform,filter] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]" aria-label="Koi Pond — home">
-      <img src="./assets/koi-pond-logo.svg" alt="Koi Pond" class="logo logo-lg logo-float logo-enter w-auto"/>
+      <img src="./assets/koi-pond-logo.svg" alt="Koi Pond" class="logo logo-nav logo-float logo-enter w-auto"/>
     </a>
 
     <!-- Nav + CTAs. On scroll, everything except Sign in + Practice free fades out.
@@ -288,7 +288,7 @@
 </div>
 
 <!-- ========== HERO ========== -->
-<section class="hero-bg pt-28 md:pt-36 pb-20 md:pb-24">
+<section class="hero-bg pt-12 md:pt-16 pb-24">
   <div class="max-w-3xl mx-auto px-6 text-center w-full">
     <!-- Eyebrow -->
     <div class="rise rise-1 inline-flex items-center gap-2.5 text-sand-100/80">
@@ -1214,13 +1214,14 @@
   };
 
   (function () {
-    // Temporary kill-switch: hides every auth/signup entry point on the landing
-    // page while email delivery is gated by Supabase's built-in SMTP rate limit.
-    // Flip back to true once custom SMTP is configured.
+    // Temporary kill-switch: hides only the email-based signup/signin entry
+    // points while Supabase's built-in SMTP is rate-limited. Dashboard CTAs
+    // stay visible — guests get an anonymous session via auth-gate.js so the
+    // funnel still works end-to-end. Flip back to true once custom SMTP is up.
     const AUTH_ENABLED = false;
     if (!AUTH_ENABLED) {
-      const sel = '[data-cta="signup"], [data-modal="signin"], a[href$="dashboard.html"]';
-      document.querySelectorAll(sel).forEach(el => el.classList.add('hidden'));
+      document.querySelectorAll('[data-cta="signup"], [data-modal="signin"]')
+        .forEach(el => el.classList.add('hidden'));
       return;
     }
 
