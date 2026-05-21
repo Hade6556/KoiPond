@@ -1188,7 +1188,12 @@
 
     <form data-form class="mt-5 space-y-3">
       <input data-email type="email" required autocomplete="email" placeholder="you@startup.com" class="w-full px-4 py-3 border border-cream-50/30 rounded-xl text-sm focus:outline-none focus:border-koi-500 focus:ring-2 focus:ring-koi-100 transition"/>
-      <input data-pw type="password" required minlength="6" autocomplete="current-password" placeholder="Password (6+ chars)" class="w-full px-4 py-3 border border-cream-50/30 rounded-xl text-sm focus:outline-none focus:border-koi-500 focus:ring-2 focus:ring-koi-100 transition"/>
+      <div data-pw-wrap>
+        <input data-pw type="password" required minlength="6" autocomplete="current-password" placeholder="Password (6+ chars)" class="w-full px-4 py-3 border border-cream-50/30 rounded-xl text-sm focus:outline-none focus:border-koi-500 focus:ring-2 focus:ring-koi-100 transition"/>
+        <div class="text-right mt-1.5">
+          <a href="#" data-forgot class="hidden text-[12px] font-medium text-sand-100/65 hover:text-koi-600 transition">Forgot password?</a>
+        </div>
+      </div>
       <div data-error class="hidden text-[12px] text-koi-700 bg-koi-50 border border-koi-100 rounded-lg px-3 py-2"></div>
       <button type="submit" data-submit class="w-full bg-koi-500 hover:bg-koi-600 text-pond-900 font-semibold py-3 rounded-xl transition shadow-[0_8px_20px_-6px_rgba(255,107,30,0.5)] disabled:opacity-60 disabled:cursor-not-allowed">Start practicing →</button>
     </form>
@@ -1225,10 +1230,16 @@
 
     function setMode(next) {
       mode = next;
-      // password field stays visible in both modes
-      const pw = modalCard.querySelector('[data-pw]');
-      const err = modalCard.querySelector('[data-error]');
+      const pwWrap = modalCard.querySelector('[data-pw-wrap]');
+      const pw     = modalCard.querySelector('[data-pw]');
+      const forgot = modalCard.querySelector('[data-forgot]');
+      const err    = modalCard.querySelector('[data-error]');
       if (err) { err.classList.add('hidden'); err.textContent = ''; }
+      // Reset password field state across mode changes
+      if (pw) pw.required = true;
+      if (pwWrap) pwWrap.classList.remove('hidden');
+      if (forgot) forgot.classList.add('hidden');
+
       if (next === 'signup') {
         title.textContent = 'Start your first pitch.';
         subtitle.textContent = "Free. No card. You'll be pitching in 2 minutes.";
@@ -1236,13 +1247,30 @@
         submitBtn.textContent = 'Create account →';
         switchText.textContent = 'Already have an account?';
         switchLink.textContent = 'Sign in';
-      } else {
+      } else if (next === 'signin') {
         title.textContent = 'Welcome back.';
         subtitle.textContent = 'Pick up where you left off.';
         if (pw) pw.setAttribute('autocomplete', 'current-password');
+        if (forgot) forgot.classList.remove('hidden');
         submitBtn.textContent = 'Sign in';
         switchText.textContent = 'New here?';
         switchLink.textContent = 'Create an account';
+      } else if (next === 'forgot') {
+        title.textContent = 'Reset your password.';
+        subtitle.textContent = "Enter your email and we'll send you a reset link.";
+        if (pwWrap) pwWrap.classList.add('hidden');
+        if (pw) pw.required = false;
+        submitBtn.textContent = 'Send reset link';
+        switchText.textContent = 'Remembered it?';
+        switchLink.textContent = 'Back to sign in';
+      } else if (next === 'recover') {
+        // Recovery callback — user clicked the email link, Supabase set a temp session
+        title.textContent = 'Set a new password.';
+        subtitle.textContent = "Pick something you'll remember this time.";
+        if (pw) { pw.setAttribute('autocomplete', 'new-password'); pw.placeholder = 'New password (6+ chars)'; }
+        submitBtn.textContent = 'Update password';
+        switchText.textContent = '';
+        switchLink.textContent = '';
       }
     }
 
@@ -1268,8 +1296,14 @@
       const f  = modalCard.querySelector('[data-form]');
       const sl = modalCard.querySelector('[data-mode-switch]');
       const cl = modalCard.querySelector('[data-modal-close]');
+      const fg = modalCard.querySelector('[data-forgot]');
       cl?.addEventListener('click', closeModal);
-      sl?.addEventListener('click', e => { e.preventDefault(); setMode(mode === 'signup' ? 'signin' : 'signup'); });
+      sl?.addEventListener('click', e => {
+        e.preventDefault();
+        // From forgot OR signup → signin. From signin → signup.
+        setMode(mode === 'signin' ? 'signup' : 'signin');
+      });
+      fg?.addEventListener('click', e => { e.preventDefault(); setMode('forgot'); });
       f?.addEventListener('submit', onSubmit);
       // re-cache element refs
       window.__authRefs = {
@@ -1291,30 +1325,75 @@
       const submitEl   = modalCard.querySelector('[data-submit]');
       const email = (emailInput?.value || '').trim();
       const password = pwInput?.value || '';
-      const isSignup = mode === 'signup';
+      const isSignup  = mode === 'signup';
+      const isForgot  = mode === 'forgot';
+      const isRecover = mode === 'recover';
 
       if (errEl) { errEl.classList.add('hidden'); errEl.textContent = ''; }
-      if (!email || password.length < 6) {
-        if (errEl) { errEl.textContent = 'Enter your email and a password (6+ chars).'; errEl.classList.remove('hidden'); }
-        return;
+
+      // Validation rules vary by mode
+      if (isForgot) {
+        if (!email) { if (errEl) { errEl.textContent = 'Enter the email you signed up with.'; errEl.classList.remove('hidden'); } return; }
+      } else if (isRecover) {
+        if (password.length < 6) { if (errEl) { errEl.textContent = 'New password must be at least 6 characters.'; errEl.classList.remove('hidden'); } return; }
+      } else {
+        if (!email || password.length < 6) {
+          if (errEl) { errEl.textContent = 'Enter your email and a password (6+ chars).'; errEl.classList.remove('hidden'); }
+          return;
+        }
       }
 
       const originalLabel = submitEl.textContent;
       submitEl.disabled = true;
-      submitEl.textContent = isSignup ? 'Creating account…' : 'Signing in…';
+      submitEl.textContent = isSignup ? 'Creating account…'
+        : isForgot ? 'Sending link…'
+        : isRecover ? 'Updating…'
+        : 'Signing in…';
 
       try {
-        const { data, error } = isSignup
-          ? await supabase.auth.signUp({
-              email, password,
-              options: { emailRedirectTo: location.origin + '/dashboard.html' }
-            })
-          : await supabase.auth.signInWithPassword({ email, password });
+        let data, error;
+        if (isForgot) {
+          ({ data, error } = await supabase.auth.resetPasswordForEmail(email, {
+            redirectTo: location.origin + '/?recover=1'
+          }));
+        } else if (isRecover) {
+          ({ data, error } = await supabase.auth.updateUser({ password }));
+        } else if (isSignup) {
+          ({ data, error } = await supabase.auth.signUp({
+            email, password,
+            options: { emailRedirectTo: location.origin + '/dashboard.html' }
+          }));
+        } else {
+          ({ data, error } = await supabase.auth.signInWithPassword({ email, password }));
+        }
 
         if (error) throw error;
 
         // Signup w/ email confirmation ON: session is null until they click the link
         const needsEmailConfirm = isSignup && !data.session;
+
+        let heading, body, ctaLabel, ctaHref;
+        if (isForgot) {
+          heading  = 'Check your inbox.';
+          body     = `We sent a reset link to <strong>${email}</strong>. Click it to set a new password.`;
+          ctaLabel = 'Got it';
+          ctaHref  = '#';
+        } else if (isRecover) {
+          heading  = 'Password updated.';
+          body     = 'Taking you to your dashboard…';
+          ctaLabel = 'Open dashboard →';
+          ctaHref  = './dashboard.html';
+        } else if (needsEmailConfirm) {
+          heading  = 'Check your inbox.';
+          body     = `We sent a confirmation link to <strong>${email}</strong>. Click it to finish signing up.`;
+          ctaLabel = 'Got it';
+          ctaHref  = '#';
+        } else {
+          heading  = isSignup ? "You're in." : 'Welcome back.';
+          body     = 'Loading your pond…';
+          ctaLabel = 'Open dashboard →';
+          ctaHref  = './dashboard.html';
+        }
 
         modalCard.innerHTML = `
           <button data-modal-close class="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center text-neutral-400 hover:text-sand-100 hover:bg-[#0A0A06]/4 ring-1 ring-[#0A0A06]/8 transition" aria-label="Close">
@@ -1324,20 +1403,14 @@
             <div class="w-14 h-14 rounded-full bg-lily-50 border border-lily-200 flex items-center justify-center mx-auto mb-4">
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#5C8D7D" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
             </div>
-            <h3 class="text-xl font-extrabold tracking-tight">${needsEmailConfirm ? 'Check your inbox.' : (isSignup ? "You're in." : 'Welcome back.')}</h3>
-            <p class="text-sm text-sand-100/65 mt-2 max-w-xs mx-auto">
-              ${needsEmailConfirm
-                ? `We sent a confirmation link to <strong>${email}</strong>. Click it to finish signing up.`
-                : `Loading your pond…`}
-            </p>
-            <a href="${needsEmailConfirm ? '#' : './dashboard.html'}" class="mt-6 inline-flex items-center justify-center gap-2 bg-koi-500 hover:bg-koi-600 text-pond-900 text-sm font-semibold px-5 py-2.5 rounded-full transition">
-              ${needsEmailConfirm ? 'Got it' : 'Open dashboard →'}
-            </a>
+            <h3 class="text-xl font-extrabold tracking-tight">${heading}</h3>
+            <p class="text-sm text-sand-100/65 mt-2 max-w-xs mx-auto">${body}</p>
+            <a href="${ctaHref}" class="mt-6 inline-flex items-center justify-center gap-2 bg-koi-500 hover:bg-koi-600 text-pond-900 text-sm font-semibold px-5 py-2.5 rounded-full transition">${ctaLabel}</a>
           </div>`;
         modalCard.querySelectorAll('[data-modal-close]').forEach(b => b.addEventListener('click', closeModal));
 
-        // Auto-redirect if a session was created
-        if (!needsEmailConfirm) {
+        // Auto-redirect when there's a live session (sign-in success or post-recovery)
+        if ((!isSignup && !isForgot) || (isSignup && !needsEmailConfirm) || isRecover) {
           setTimeout(() => { location.href = './dashboard.html'; }, 700);
         }
       } catch (err) {
@@ -1375,6 +1448,17 @@
       setTimeout(() => openModal('signin'), 250);
       history.replaceState({}, '', location.pathname);
     }
+
+    // Supabase fires PASSWORD_RECOVERY when the user lands here via the reset
+    // email link (URL contains a recovery access_token). Show the "set new
+    // password" form so they can complete the reset in-place.
+    supabase.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        openModal('recover');
+        history.replaceState({}, '', location.pathname);
+      }
+    });
+
     modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && !modal.classList.contains('hidden')) closeModal(); });
     rebindModal();
