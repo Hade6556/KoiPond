@@ -113,19 +113,13 @@
       <!-- Header -->
       <div class="mb-6">
         <p class="text-[12px] text-pond-700/60 mb-1">Practice Library</p>
-        <h1 class="text-[28px] md:text-[32px] font-extrabold tracking-tight leading-tight">Pick a pitch situation.</h1>
-        <p class="mt-1.5 text-[14px] text-pond-700/80">Every session is the same shape: 2-minute pitch → investor Q&amp;A → AI feedback. Choose the room you're walking into.</p>
+        <h1 class="text-[28px] md:text-[32px] font-extrabold tracking-tight leading-tight">Pick the moment you're dreading.</h1>
+        <p class="mt-1.5 text-[14px] text-pond-700/80">Every session is the same shape: 2-minute run → audience Q&amp;A → AI feedback. Choose the room you're walking into.</p>
       </div>
 
-      <!-- Category filters -->
-      <div class="mb-3 flex flex-wrap gap-2" data-filter-group="category">
+      <!-- Category filters — hidden during pivot Phase 1; restored in Phase 2 with public-speaking categories -->
+      <div class="hidden mb-3 flex flex-wrap gap-2" data-filter-group="category">
         <button class="chip active" data-cat="all">All Scenarios</button>
-        <button class="chip" data-cat="university">University Pitch</button>
-        <button class="chip" data-cat="hackathon">Hackathon Pitch</button>
-        <button class="chip" data-cat="angel">Angel Investor</button>
-        <button class="chip" data-cat="vc">VC Pitch</button>
-        <button class="chip" data-cat="demoday">Demo Day</button>
-        <button class="chip" data-cat="hardmode">Hard Mode</button>
       </div>
 
       <!-- Difficulty filters -->
@@ -213,7 +207,7 @@
             <p class="text-[11px] text-pond-700/60 mt-1">${s.name} · ${s.firm}</p>
             <p class="text-[12.5px] text-pond-700/80 mt-3 mb-4 leading-snug flex-1">${s.desc}</p>
             <div class="mt-auto flex items-center justify-between pt-3 border-t border-cream-200">
-              <span class="text-[11px] text-pond-700/70 font-medium">2 min pitch + investor Q&amp;A</span>
+              <span class="text-[11px] text-pond-700/70 font-medium">2 min run + audience Q&amp;A</span>
               <span class="inline-flex items-center gap-1 text-[12px] font-semibold text-koi-600 group-hover:text-koi-700">
                 Start Practice
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
